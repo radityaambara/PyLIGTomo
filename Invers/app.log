@@ -1,0 +1,103 @@
+INFO 2024-07-17 21:48:17 : - 
+ delt: 0.25
+ deltn: 0.5
+ xfac: 1.3
+ iter1: 50
+ iter2: 50
+ tmin: 0.0001
+ iteration_number: 20
+ up_threshold: 500
+ low_threshold: 75
+ d_rms: 0.002
+ r_time_P: 0.8
+ r_time_S: 0.8
+ damping_1: 10
+ damping_2: 0
+ update_grid: True
+INFO 2024-07-17 21:50:13 : - start forward
+INFO 2024-07-17 21:57:07 : - start removing node
+INFO 2024-07-17 21:57:07 : - <--- initial RHC P ---> 
+mean: 190.92467532467532 || median: 22.0 || deviation: 485.82306333854496
+INFO 2024-07-17 21:57:07 : - jumlah non-zero node awal P: 385
+INFO 2024-07-17 21:57:08 : - <--- initial RHC S ---> 
+mean: 188.586118251928 || median: 22.0 || deviation: 483.3519061778434
+INFO 2024-07-17 21:57:08 : - jumlah non-zero node awal S: 385
+INFO 2024-07-17 22:01:12 : - start adding node
+INFO 2024-07-17 22:32:26 : - start removing node
+INFO 2024-07-17 22:36:24 : - initial rms: 0.33830655256799813
+INFO 2024-07-17 22:36:24 : - start iteration: 0
+INFO 2024-07-17 22:36:40 : - CND value: 45.27080313439386
+INFO 2024-07-17 22:38:44 : - start forward after iteration: 0
+INFO 2024-07-17 22:48:03 : - rms after iteration 0 : 0.24066168657971018
+INFO 2024-07-17 22:48:03 : - start adding node
+INFO 2024-07-17 22:48:03 : - start removing node
+INFO 2024-07-17 22:51:57 : - start iteration: 1
+INFO 2024-07-17 22:52:12 : - CND value: 42.24570907059292
+INFO 2024-07-17 22:54:17 : - start forward after iteration: 1
+INFO 2024-07-17 23:07:18 : - rms after iteration 1 : 0.1521870583724801
+INFO 2024-07-17 23:07:18 : - start adding node
+INFO 2024-07-17 23:07:18 : - start removing node
+INFO 2024-07-17 23:11:33 : - start iteration: 2
+INFO 2024-07-17 23:11:47 : - CND value: 37.75258690921003
+INFO 2024-07-17 23:13:53 : - start forward after iteration: 2
+INFO 2024-07-17 23:32:35 : - rms after iteration 2 : 0.10652739044556518
+INFO 2024-07-17 23:32:35 : - start adding node
+INFO 2024-07-17 23:32:35 : - start removing node
+INFO 2024-07-17 23:36:48 : - start iteration: 3
+INFO 2024-07-17 23:37:02 : - CND value: 38.098453770478734
+INFO 2024-07-17 23:39:07 : - start forward after iteration: 3
+INFO 2024-07-17 23:59:06 : - rms after iteration 3 : 0.08849092547302449
+INFO 2024-07-17 23:59:06 : - start adding node
+INFO 2024-07-17 23:59:06 : - start removing node
+INFO 2024-07-18 00:03:17 : - start iteration: 4
+INFO 2024-07-18 00:03:32 : - CND value: 40.47715082997052
+INFO 2024-07-18 00:05:36 : - start forward after iteration: 4
+INFO 2024-07-18 00:29:10 : - rms after iteration 4 : 0.07802916885325602
+INFO 2024-07-18 00:29:10 : - start adding node
+INFO 2024-07-18 00:29:10 : - start removing node
+INFO 2024-07-18 00:33:50 : - start iteration: 5
+INFO 2024-07-18 00:34:03 : - CND value: 41.11730696444993
+INFO 2024-07-18 00:36:07 : - start forward after iteration: 5
+INFO 2024-07-18 01:00:30 : - rms after iteration 5 : 0.0732134789045945
+INFO 2024-07-18 01:00:30 : - start adding node
+INFO 2024-07-18 01:00:30 : - start removing node
+INFO 2024-07-18 01:04:43 : - start iteration: 6
+INFO 2024-07-18 01:04:56 : - CND value: 39.78962631698644
+INFO 2024-07-18 01:07:01 : - start forward after iteration: 6
+INFO 2024-07-18 01:32:44 : - rms after iteration 6 : 0.06859834120266098
+INFO 2024-07-18 01:32:44 : - start adding node
+INFO 2024-07-18 01:32:44 : - start removing node
+INFO 2024-07-18 01:37:24 : - start iteration: 7
+INFO 2024-07-18 01:37:38 : - CND value: 39.8195228883857
+INFO 2024-07-18 01:39:42 : - start forward after iteration: 7
+INFO 2024-07-18 02:05:44 : - rms after iteration 7 : 0.06528115543805839
+INFO 2024-07-18 02:05:44 : - start adding node
+INFO 2024-07-18 02:05:44 : - start removing node
+INFO 2024-07-18 02:10:14 : - start iteration: 8
+INFO 2024-07-18 02:10:27 : - CND value: 39.82424625653269
+INFO 2024-07-18 02:12:31 : - start forward after iteration: 8
+INFO 2024-07-18 02:39:22 : - rms after iteration 8 : 0.06269434507713673
+INFO 2024-07-18 02:39:22 : - start adding node
+INFO 2024-07-18 02:39:22 : - start removing node
+INFO 2024-07-18 02:43:28 : - start iteration: 9
+INFO 2024-07-18 02:43:42 : - CND value: 39.72087763657936
+INFO 2024-07-18 02:45:46 : - start forward after iteration: 9
+INFO 2024-07-18 03:14:01 : - rms after iteration 9 : 0.06063767762626836
+INFO 2024-07-18 03:14:01 : - start adding node
+INFO 2024-07-18 03:14:01 : - start removing node
+INFO 2024-07-18 03:18:37 : - start iteration: 10
+INFO 2024-07-18 03:18:50 : - CND value: 39.687138751849425
+INFO 2024-07-18 03:20:55 : - start forward after iteration: 10
+INFO 2024-07-18 03:49:26 : - rms after iteration 10 : 0.058396828136632634
+INFO 2024-07-18 03:49:26 : - start adding node
+INFO 2024-07-18 03:49:26 : - start removing node
+INFO 2024-07-18 03:53:32 : - start iteration: 11
+INFO 2024-07-18 03:53:46 : - CND value: 39.62769518262854
+INFO 2024-07-18 03:55:50 : - start forward after iteration: 11
+INFO 2024-07-18 04:25:04 : - rms after iteration 11 : 0.05733089030932651
+INFO 2024-07-18 04:25:05 : - <--- RHC P final ---> 
+mean: 260.8587127158556 || median: 195.0 || deviation: 256.66362328290745
+INFO 2024-07-18 04:25:05 : - jumlah non-zero node P: 637
+INFO 2024-07-18 04:25:05 : - <--- RHC S final ---> 
+mean: 248.1585557299843 || median: 179.0 || deviation: 253.36143598871894
+INFO 2024-07-18 04:25:05 : - jumlah non-zero node S: 637
