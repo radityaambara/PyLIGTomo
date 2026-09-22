@@ -1,0 +1,14 @@
+README.md
+setup.py
+LIGTomo/__init__.py
+LIGTomo/all_func.py
+LIGTomo/convert_vtk.py
+LIGTomo/forward.py
+LIGTomo/invers.py
+LIGTomo/invers_backup.py
+LIGTomo/opt_damp.py
+PyLIGTomo.egg-info/PKG-INFO
+PyLIGTomo.egg-info/SOURCES.txt
+PyLIGTomo.egg-info/dependency_links.txt
+PyLIGTomo.egg-info/requires.txt
+PyLIGTomo.egg-info/top_level.txt

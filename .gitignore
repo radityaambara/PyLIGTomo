@@ -17,8 +17,6 @@ ENV/
 
 # Build
 build/
-dist/
-*.egg-info/
 
 # Testing/cache
 .pytest_cache/

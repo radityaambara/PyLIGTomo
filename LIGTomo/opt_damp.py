@@ -412,7 +412,7 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         else:
             inv_matrix_hypo=scsp.hstack((inv_matrix_P, inv_matrix_S))
         t_smooth = np.zeros((smooth_damp.shape[0] * 2))
-        t_res_inv = np.hstack((t_res, t_smooth))
+        t_res_inv = np.hstack((t_res_awal, t_smooth))
         inversion_result = lsmr(inv_matrix_hypo, t_res_inv, damp=damping_list.iloc[iter,0])
 
         if len(hypo_list)!=0:
@@ -480,10 +480,10 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
             t_update =(source_list_invers[source_list_invers['id'] == phase_listP_use.iloc[i, 0]][['to_update']])
             if (source.size == 0) or (receiver.size == 0):
                 continue
-            if (float(phase_listP_use.iloc[i][2])) <= 0:
+            if (float(phase_listP_use.iloc[i,2])) <= 0:
                 continue
             phase_listP_use_dum.append(phase_listP_use.iloc[i, :])
-            ttobs_P.append(float(phase_listP_use.iloc[i][2]) - float(t_update.to_numpy().flatten()))
+            ttobs_P.append(float(phase_listP_use.iloc[i,2]) - float(t_update.to_numpy().flatten()))
             path = np.vstack((source, receiver))
             paths_P.append(path)
             types_P.append(str((source_list_invers[source_list_invers['id'] == phase_listP_use.iloc[i, 0]]['type']).item()))
@@ -501,10 +501,10 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
             t_update = (source_list_invers[source_list_invers['id'] == phase_listS_use.iloc[i, 0]][['to_update']])
             if (source.size == 0) or (receiver.size == 0):
                 continue
-            if (float(phase_listS_use.iloc[i][2])) <= 0:
+            if (float(phase_listS_use.iloc[i,2])) <= 0:
                 continue
             phase_listS_use_dum.append(phase_listS_use.iloc[i, :])
-            ttobs_S.append(float(phase_listS_use.iloc[i][2]) - float(t_update.to_numpy().flatten()))
+            ttobs_S.append(float(phase_listS_use.iloc[i,2]) - float(t_update.to_numpy().flatten()))
             path = np.vstack((source, receiver))
             paths_S.append(path)
             types_S.append(str((source_list_invers[source_list_invers['id'] == phase_listS_use.iloc[i, 0]]['type']).item()))

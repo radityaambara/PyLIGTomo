@@ -5,7 +5,7 @@ Adaptive Irregular Grid Local Earthquake Tomography using voronoi based Grid
 pip install github.com/radityaambara/PyLIGTomo
 
 ## requirement
-numpy <=2.0
+numpy
 scipy
 matplotlib
 pyevtk
