@@ -1,4 +1,4 @@
-from .all_func import VelocityGrid, vor_volumes, smooth_matrix, is_addnode
+from .all_func import VelocityGrid, vor_volumes, smooth_matrix, is_addnode, count_tensor_dens
 from copy import copy
 from scipy.sparse.linalg import lsmr
 import scipy.sparse as scsp
@@ -12,7 +12,7 @@ import logging
 import os
 import matplotlib.pyplot as plt
 def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, damping_list, delt, deltn, xfac, iter1, iter2, tmin,
-                 up_threshold, low_threshold, r_time_P, r_time_S,
+                 up_threshold, low_threshold, dens_thres, r_time_P, r_time_S,
                  update_grid,folder_name,nu_cpu=os.cpu_count()-1):
     #load model parameter
     f_path='./'+folder_name
@@ -278,15 +278,20 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
     velgridS.change_node(node)
 
     vp_kernel=[]
-    successful_rows_P = 0
+    Ax=[]
+    Ay=[]
+    Az=[]
     with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-        results = executor.map(velgridP.safe_crkernel,path_list_P,chunksize=1)
+        results = executor.map(velgridP.safe_crkernel_tensor,path_list_P,chunksize=1)
         for i, result in enumerate(results):
-            vp_kernel.append(result)
-            successful_rows_P += 1
+            vp_kernel.append(result[0])
+            Ax.append(result[1])
+            Ay.append(result[2])
+            Az.append(result[3])
     vp_kernel = scsp.vstack(vp_kernel).tocsr()
-
-
+    Ax = scsp.vstack(Ax).tocsr()
+    Ay = scsp.vstack(Ay).tocsr()
+    Az = scsp.vstack(Az).tocsr()
 
     print('start adding node')
     logger.info('start adding node')
@@ -311,14 +316,38 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         print('calculating kernel node')
         logger.info('calculating kernel node')
         vp_kernel=[]
-        successful_rows_P = 0
+        Ax=[]
+        Ay=[]
+        Az=[]
         with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-            results = executor.map(velgridP.safe_crkernel, path_list_P, chunksize=1)
+            results = executor.map(velgridP.safe_crkernel_tensor, path_list_P, chunksize=1)
             for i, result in enumerate(results):
-                vp_kernel.append(result)
-                successful_rows_P += 1
+                vp_kernel.append(result[0])
+                Ax.append(result[1])
+                Ay.append(result[2])
+                Az.append(result[3])
         vp_kernel = scsp.vstack(vp_kernel).tocsr()
+        Ax = scsp.vstack(Ax).tocsr()
+        Ay = scsp.vstack(Ay).tocsr()
+        Az = scsp.vstack(Az).tocsr()
+
         step_add += 1
+
+    # start removing node
+    print('start removing node by density tensor')
+    logger.info('start removing node by density tensor')
+    dens=count_tensor_dens(Ax,Ay,Az)
+    node=node[dens>=dens_thres,:]
+    vel_node_P=vel_node_P[dens>=dens_thres]
+    vel_node_S=vel_node_S[dens>=dens_thres]
+    velgridP.change_node(node)
+    velgridS.change_node(node)
+    vp_kernel=[]
+    with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
+        results = executor.map(velgridP.safe_crkernel,path_list_P,chunksize=1)
+        for i, result in enumerate(results):
+            vp_kernel.append(result)
+    vp_kernel = scsp.vstack(vp_kernel).tocsr()
 
     # start removing node
     print('start removing node')
