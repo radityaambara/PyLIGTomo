@@ -151,6 +151,94 @@ class VelocityGrid:
         tt = np.sum(distance_path/2*(s1+s2))
         return tt
 
+    def rodrigues_rotation(self, n, axis, angle):
+        #Rotate vector v around axis by angle using Rodrigues' formula.
+        axis = axis / np.linalg.norm(axis)
+        return (n * np.cos(angle)+ np.cross(axis, n) * np.sin(angle)+ axis * np.dot(axis, n)
+                * (1.0 - np.cos(angle)))
+
+    def get_plane_normal(self,ray_direction,plane_angle):
+        #Generate a normal vector defining the plane of the circular arc.
+        #plane_angle controls the rotation of the arc plane around the Source-Receiver direction.
+        u = ray_direction / np.linalg.norm(ray_direction)
+        # Reference vector
+        ref = np.array([0.0, 0.0, 1.0])
+        # Avoid parallel vectors
+        if abs(np.dot(u, ref)) > 0.9:
+            ref = np.array([0.0, 1.0, 0.0])
+        # Make ref perpendicular to ray direction
+        q = ref - np.dot(ref, u) * u
+        q /= np.linalg.norm(q)
+        # Another perpendicular vector
+        p = np.cross(u, q)
+        p /= np.linalg.norm(p)
+        # Rotate the plane orientation
+        n = np.cos(plane_angle) * q + np.sin(plane_angle) * p
+        n /= np.linalg.norm(n)
+        return n
+
+    def generate_circular_arc(self,source,receiver,radius,plane_angle,npoints,side):
+        d = receiver - source
+        L = np.linalg.norm(d)
+        if L == 0:
+            raise ValueError("Source and receiver cannot be identical.")
+        if radius < L / 2:
+            raise ValueError(f"Radius must be >= {L / 2:.3f}")
+
+        u = d / L
+        M = 0.5 * (source + receiver)
+        n = self.get_plane_normal(u, plane_angle)
+        h = np.sqrt(radius ** 2 - (L / 2) ** 2)
+        C = M + side * h * n
+        k = np.cross(u, n)
+        k /= np.linalg.norm(k)
+        e0 = (source - C) / radius
+        e1 = (receiver - C) / radius
+        theta = np.arctan2(np.dot(k, np.cross(e0, e1)),np.dot(e0, e1))
+        t = np.linspace(0.0, 1.0, npoints)
+        points = []
+        for ti in t:
+            angle = theta * ti
+            e = self.rodrigues_rotation(e0,k,angle)
+            point = C + radius * e
+            points.append(point)
+        return np.asarray(points)
+
+    def approximate_ray_tracing(self,path,npoints):
+        #Approximate Ray Tracing (ART).Generates multiple circular arcs and selects the arc with minimum travel time.
+        best_path=path
+        min_ttime=self.tt(path)
+        L=np.linalg.norm(path[0]-path[-1])
+        radius_list = [
+            0.51 * L,
+            0.6 * L,
+            0.8 * L,
+            1.0 * L,
+            1.5 * L,
+            2.0 * L,
+            5.0 * L,
+            10.0 * L,
+            100.0 * L
+        ]
+        plane_angles = np.linspace(0,np.pi,12,endpoint=False
+)
+        for angle in plane_angles:
+            for radius in radius_list:
+                # Two possible bending directions
+                for side in [-1, 1]:
+                    try:
+                        pathn = self.generate_circular_arc(path[0,:],path[-1,:],radius,angle,npoints,side)
+                        tt   = self.tt(pathn)
+                    except ValueError:
+                        continue
+
+                    if tt<min_ttime:
+                        best_path = pathn
+        if best_path is None:
+            raise ValueError("No path found.")
+        return best_path
+
+
     def pertub(self,a, b, c):
         mid = ((b - a) / 2) + a
         gVx, gVy, gVz = self.veld(mid[0], mid[1], mid[2])
@@ -198,9 +286,12 @@ class VelocityGrid:
                 pathn[le - i, :] = self.pertub(pathn[le - i - 1], pathn[le - i + 1], pathn[le - i])
         return pathn
 
-    """method for psudobending"""
+    """method for psudobending with ART initialization"""
     def psudobending(self,path):
-        pathn = self.doublepath(path)
+        diss = path[0] - path[-1]
+        npoints=int(np.linalg.norm(diss)/2*self.delt)
+        pathn = self.approximate_ray_tracing(path,npoints)
+        pathn = self.doublepath(pathn)
         tt0 = self.tt(pathn)
         for i in range(0, self.iter1):
             for j in range(0, self.iter2):

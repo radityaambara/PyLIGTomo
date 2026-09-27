@@ -136,7 +136,6 @@ def run_forward(modvel, modvel_outer, source_list, receiver_list, phase_list, de
     ttcal_P = []
     path_list_P =[]
     phase_listP_use_dum=[]
-
     with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
         results = executor.map(velgridP.safe_ttime_only,paths_P, chunksize=1)
         for i, result in enumerate(results):
@@ -151,10 +150,7 @@ def run_forward(modvel, modvel_outer, source_list, receiver_list, phase_list, de
             ttcal_i = ttcal_i * (1 + (rnd_noise / 100))
             ttcal_P.append(float(ttcal_i))
             path_list_P.append(result[0])
-            ttcal_P.append(float(ttcal_i))
             phase_listP_use_dum.append(phase_listP_use.iloc[i,:])
-
-
 
     phase_listP_use = pd.DataFrame(phase_listP_use_dum)
 
@@ -186,8 +182,7 @@ def run_forward(modvel, modvel_outer, source_list, receiver_list, phase_list, de
             ttcal_i = ttcal_i * (1 + (rnd_noise / 100))
             ttcal_S.append(float(ttcal_i))
             path_list_S.append(result[0])
-            ttcal_S.append(float(ttcal_i))
-            phase_listS_use_dum.append(phase_listP_use.iloc[i,:])
+            phase_listS_use_dum.append(phase_listS_use.iloc[i,:])
 
 
     phase_listS_use = pd.DataFrame(phase_listS_use_dum)

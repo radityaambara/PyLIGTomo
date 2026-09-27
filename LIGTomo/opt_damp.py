@@ -10,6 +10,7 @@ import numpy as np
 from zipfile import ZipFile
 import logging
 import os
+import matplotlib.pyplot as plt
 def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, damping_list, delt, deltn, xfac, iter1, iter2, tmin,
                  up_threshold, low_threshold, r_time_P, r_time_S,
                  update_grid,folder_name,nu_cpu=os.cpu_count()-1):
@@ -376,6 +377,8 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
     rms_list=[]
     rms_list.append(rms1)
     dv_var=[]
+    ds_var=[]
+    dis_var=[]
     dt_var=[]
     rnorm_list=[]
     xnorm_list=[]
@@ -432,6 +435,9 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         logger.info('xnorm: ' + str(inversion_result[7]))
         logger.info('no_ite: ' + str(inversion_result[2]))
 
+        ds_var_i = np.sqrt((np.mean(np.hstack((ds_P,ds_S)) ** 2)))
+        ds_var.append(ds_var_i)
+
         #updateVp
         vel_awal_P = copy(vel_node_P)
         vel_node_P_akhir = copy(vel_node_P)
@@ -464,6 +470,8 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
                 hypo_list.loc[i,'elevation'] += inversion_result[0][i*4+3]
                 hypo_list.loc[i,'to_update_i'] = inversion_result[0][i * 4]
             source_list_invers=pd.concat([hypo_list, blast_list], ignore_index=True)
+            dis_var_i=np.sqrt(np.mean((inversion_result[0][:(len(hypo_list)*4)])**2))
+            dis_var.append(dis_var_i)
         else:
             source_list_invers=blast_list
 
@@ -580,12 +588,65 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
     #save_var=np.vstack((dt_var,dv_var)).T
     #np.savetxt("var_opt_list",save_var,delimiter=',',fmt='%.4f',header='X,Y,Z,Vp,Vs,Vp/Vs,dws_p,dws_s',comments='')
     damping_list['t_res']=np.array(dt_var)
+    damping_list['slow_variance'] = np.array(ds_var)
+    if len(hypo_list)!=0:
+        damping_list['disp_variance'] = np.array(dis_var)
+    else:
+        damping_list['disp_variance'] = np.zeros(len(ds_var))
     damping_list['vel_variance']=np.array(dv_var)
     damping_list['rnorm']=np.array(rnorm_list)
     damping_list['xnorm']=np.array(xnorm_list)
     damping_list['CND']=np.array(CND_list)
     damping_list.to_csv(folder_name+'/param_opt.csv', index=False)
-    with ZipFile(folder_name + '/compress.zip', 'w') as zip:
-        zip.write(folder_name + '/param_opt.csv')
+    #plot figure1
+    labels = (damping_list['damp_list'].astype(str)+ ','+ damping_list['smooth_damp'].astype(str))
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.scatter(damping_list['rnorm'],damping_list['xnorm'])
+    for x, y, label in zip(damping_list['rnorm'],damping_list['xnorm'],labels):
+        ax.annotate(label,(x, y),xytext=(5, 5),textcoords='offset points',fontsize=8)
+
+    ax.set_xlabel('rnorm')
+    ax.set_ylabel('xnorm')
+    ax.set_title('trade-off curve')
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig1_path = os.path.join(folder_name, 'fig1.png')
+    fig.savefig(fig1_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+    # plot figure2
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.scatter(damping_list['t_res'],damping_list['slow_variance'])
+    for x, y, label in zip(damping_list['t_res'],damping_list['slow_variance'],labels):
+        ax.annotate(label,(x, y),xytext=(5, 5),textcoords='offset points',fontsize=8
+        )
+    ax.set_xlabel('t_res')
+    ax.set_ylabel('slow_variance')
+    ax.set_title('trade-off curve')
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig2_path = os.path.join(folder_name, 'fig2.png')
+    fig.savefig(fig2_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+    # plot figure3
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.scatter(damping_list['t_res'],damping_list['disp_variance'])
+    for x, y, label in zip(damping_list['t_res'],damping_list['disp_variance'],labels):
+        ax.annotate(label,(x, y),xytext=(5, 5),textcoords='offset points',fontsize=8
+        )
+    ax.set_xlabel('t_res')
+    ax.set_ylabel('disp_variance')
+    ax.set_title('trade-off curve')
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig3_path = os.path.join(folder_name, 'fig3.png')
+    fig.savefig(fig3_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    with ZipFile(folder_name + '/compress.zip', 'w') as zf:
+        zf.write(folder_name + '/param_opt.csv')
+        zf.write(folder_name + '/fig1.png')
+        zf.write(folder_name + '/fig2.png')
+        zf.write(folder_name + '/fig3.png')
     print('process is done')
     logger.info('process is done')
