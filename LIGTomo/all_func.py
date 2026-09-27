@@ -328,7 +328,7 @@ class VelocityGrid:
             path = np.vstack([path[0:1], valid_points])
 
         path_mirror=path[1:]
-        distance_path=np.linalg.norm(path[:-1]-path_mirror,axis=1)
+        distance_path=np.linalg.norm(path_mirror-path[:-1],axis=1)
         half_distance=distance_path/2
         mytree = KDTree(self.node)
         ind=mytree.query(path)[1]
@@ -338,6 +338,50 @@ class VelocityGrid:
         #Add half the distance to the ending nodes (ind[i+1])
         np.add.at(krn, ind[1:], half_distance)
         return scsp.csr_array(krn.reshape(1,-1))
+
+    """method to count raypath length in each irregular node
+    with added the direction for the raypath for irregular nodes adaptation"""
+    """vectorize mode for faster without loop"""
+    def crkernel_tensor(self, path):
+        path_mirror=path[1:]
+        distance_path=np.linalg.norm(path[:-1]-path_mirror,axis=1)
+        if (distance_path > 2*self.delt).any():
+            #vectorize for adding node
+            spaces = np.where(distance_path <= 2 * self.delt, 1, np.round(distance_path / self.delt).astype(int))
+            max_space = spaces.max()
+            steps = np.arange(1, max_space + 1)[:, None]
+            mask = steps <= spaces
+            t_step = steps/spaces
+            all_points = path[:-1][None, :, :] + t_step[:, :, None] * (path_mirror - path[:-1])[None, :, :]
+            valid_points = all_points.transpose(1, 0, 2)[mask.T]
+            path = np.vstack([path[0:1], valid_points])
+
+        path_mirror=path[1:]
+        delta=path_mirror-path[:-1]
+        distance_path=np.linalg.norm(delta,axis=1)
+        u=delta/distance_path[:,None]
+        ux=u[:,0]
+        uy=u[:,1]
+        uz=u[:,2]
+        half_distance=distance_path/2
+        mytree = KDTree(self.node)
+        ind=mytree.query(path)[1]
+        krn = np.zeros(len(self.node))
+        ax_sum = np.zeros(len(self.node))
+        ay_sum = np.zeros(len(self.node))
+        az_sum = np.zeros(len(self.node))
+
+        #Add half the distance to the starting nodes (ind[i])
+        np.add.at(krn, ind[:-1], half_distance)
+        np.add.at(ax_sum, ind[:-1], half_distance * ux)
+        np.add.at(ay_sum, ind[:-1], half_distance * uy)
+        np.add.at(az_sum, ind[:-1], half_distance * uz)
+        #Add half the distance to the ending nodes (ind[i+1])
+        np.add.at(krn, ind[1:], half_distance)
+        np.add.at(ax_sum, ind[1:], half_distance * ux)
+        np.add.at(ay_sum, ind[1:], half_distance * uy)
+        np.add.at(az_sum, ind[1:], half_distance * uz)
+        return scsp.csr_array(krn.reshape(1,-1)),scsp.csr_array(ax_sum.reshape(1,-1)),scsp.csr_array(ay_sum.reshape(1,-1)),scsp.csr_array(az_sum.reshape(1, -1))
 
     """method for create hypocenter derivative"""
     def hypo_deriv(self, path):
@@ -354,6 +398,13 @@ class VelocityGrid:
         gkernl = self.crkernel(pathn)
         hypo_der= self.hypo_deriv(pathn)
         return pathn, tt, gkernl, hypo_der
+
+    """method to call all the three method for each data for tensor calculation"""
+    def forwardtwopoints_tensor(self, path):
+        pathn, tt = self.psudobending(path)
+        gkernl,ax,ay,az = self.crkernel_tensor(pathn)
+        hypo_der= self.hypo_deriv(pathn)
+        return pathn, tt, gkernl, hypo_der, ax,ay,az
 
     def ttime_only(self, path):
         pathn, tt = self.psudobending(path)
@@ -373,9 +424,27 @@ class VelocityGrid:
                 "type": type(e).__name__,
                 "traceback": traceback.format_exc()
             }
+    def safe_crkernel_tensor(self,path):
+        try:
+            return self.crkernel_tensor(path)
+        except Exception as e:
+            return {
+                "error": str(e),
+                "type": type(e).__name__,
+                "traceback": traceback.format_exc()
+            }
     def safe_forwardtwopoints(self,path):
         try:
             return self.forwardtwopoints(path)
+        except Exception as e:
+            return {
+                "error": str(e),
+                "type": type(e).__name__,
+                "traceback": traceback.format_exc()
+            }
+    def safe_forwardtwopoints_tensor(self,path):
+        try:
+            return self.forwardtwopoints_tensor(path)
         except Exception as e:
             return {
                 "error": str(e),
@@ -404,6 +473,37 @@ def vor_volumes(points):
             vol[i] = ConvexHull(v.vertices[indices]).volume
     return vol
 
+def count_tensor_dens(Ax,Ay,Az):
+    inv_length = (Ax.multiply(Ax)+ Ay.multiply(Ay)+ Az.multiply(Az)).tocsr()
+    inv_length.data = np.sqrt(inv_length.data)
+    inv_length.eliminate_zeros()
+    inv_length.data = 1.0 / inv_length.data
+
+    def colsum(matrix):
+        return np.asarray(matrix.sum(axis=0)).ravel()
+    Rxx = colsum(Ax.multiply(Ax).multiply(inv_length))
+    Ryy = colsum(Ay.multiply(Ay).multiply(inv_length))
+    Rzz = colsum(Az.multiply(Az).multiply(inv_length))
+
+    Rxy = colsum(Ax.multiply(Ay).multiply(inv_length))
+    Rxz = colsum(Ax.multiply(Az).multiply(inv_length))
+    Ryz = colsum(Ay.multiply(Az).multiply(inv_length))
+
+    RDT = np.zeros((Ax.shape[1], 3, 3), dtype=float)
+
+    RDT[:, 0, 0] = Rxx
+    RDT[:, 1, 1] = Ryy
+    RDT[:, 2, 2] = Rzz
+
+    RDT[:, 0, 1] = RDT[:, 1, 0] = Rxy
+    RDT[:, 0, 2] = RDT[:, 2, 0] = Rxz
+    RDT[:, 1, 2] = RDT[:, 2, 1] = Ryz
+    # Eigenvalues in descending order
+    eigenvalues = np.linalg.eigvalsh(RDT)[:, ::-1]
+    eigenvalues = np.maximum(eigenvalues, 0.0)
+    coverage = eigenvalues.sum(axis=1)
+    isotropy = np.divide(3.0 * eigenvalues[:, 2],coverage,out=np.full(Ax.shape[1], np.nan),where=coverage > 0)
+    return isotropy
 
 """function for creating spatial smoothing matrix based on triangulation neighbour
 The input is the xyz coordinates of the node to be inverted (nx3 array). 

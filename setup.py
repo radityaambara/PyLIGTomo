@@ -2,9 +2,9 @@ from setuptools import setup, find_packages
 
 setup(
     name="PyLIGTomo",
-    version="1.0",
+    version="2.0",
     packages=find_packages(),
-    install_requires=["numpy<=2.0",
+    install_requires=["numpy",
                       "scipy",
                       "matplotlib",
                       "pyevtk",
@@ -19,5 +19,5 @@ setup(
         "Programming Language :: Python :: 3",
         "Operating System :: OS Independent",
     ],
-    python_requires='>=3.6',
+    python_requires='>=3.10',
 )

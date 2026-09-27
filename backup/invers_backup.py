@@ -1,4 +1,4 @@
-from .all_func import VelocityGrid, vor_volumes, smooth_matrix, is_addnode, count_tensor_dens
+from .all_func import VelocityGrid, vor_volumes, smooth_matrix, is_addnode
 from copy import copy
 from scipy.sparse.linalg import lsmr
 import scipy.sparse as scsp
@@ -13,10 +13,9 @@ from zipfile import ZipFile
 import logging
 import os
 
-
 def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, delt, deltn, xfac, iter1, iter2, tmin,
-                 iteration_number, up_threshold, low_threshold, dens_thres, d_rms, r_time_P, r_time_S, damping_1, damping_2,
-               update_grid,folder_name,update_grid_after=False,nu_cpu=os.cpu_count()-1):
+                 iteration_number, up_threshold, low_threshold, d_rms, r_time_P, r_time_S, damping_1, damping_2,
+               update_grid,folder_name,update_grid_after=False):
     #load model parameter
     f_path='./'+folder_name
     if not os.path.exists(f_path):
@@ -94,10 +93,10 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
     Xinter, Yinter, Zinter = np.meshgrid(xnode, ynode, znode, indexing='ij')
     interpP = RBFInterpolator(node_all,vel_allP,kernel='linear',neighbors=8)
     interpS = RBFInterpolator(node_all,vel_allS,kernel='linear',neighbors=8)
-    gridVp = (np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
-                       decimals=4).reshape(len(xnode),len(ynode),len(znode))).astype(np.float32)
-    gridVs = (np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
-                       decimals=4).reshape(len(xnode),len(ynode),len(znode))).astype(np.float32)
+    gridVp = np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
+                       decimals=4).reshape(len(xnode),len(ynode),len(znode))
+    gridVs = np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
+                       decimals=4).reshape(len(xnode),len(ynode),len(znode))
 
     #determine velgrid object
     velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin)
@@ -172,116 +171,93 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
     #start initial forward modeling
     print('start forward')
     logger.info('start forward')
+    print('forward P phase')
+    logger.info('forward P phase')
     ttcal_P = []
     path_list_P =[]
+    vp_kernel = np.zeros((len(paths_P), node.shape[0]))
+    if len(hypo_list)!=0:
+        hypo_kernel_P = np.zeros((len(paths_P),len(hypo_list)*4))
     phase_listP_use_dum=[]
     ttobsP_dum=[]
-
-    if len(hypo_list) != 0:
-        hypo_id_to_idx = {int(val): idx for idx, val in enumerate(hypo_list.iloc[:, 0])}
-    #v_rows, v_cols, v_data = [], [], []
-    vp_kernel=[]
-    hypo_rows, hypo_cols, hypo_data = [], [], []
-    successful_row_idx = 0
-    with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-        results = executor.map(velgridP.safe_forwardtwopoints,paths_P, chunksize=1)
-        for i, result in enumerate(results):
-            if isinstance(result, dict) and "error" in result:
-                logger.info('not convergen in path P: ' +' '.join(phase_listP_use.iloc[i, :].astype(str)))
-                logger.info(result['type'])
-                logger.info(result['error'])
-                logger.info(result['traceback'])
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        results_iterator = executor.map(velgridP.forwardtwopoints, paths_P, chunksize=1)
+        for i, grpli in enumerate(results_iterator):
+            try:
+                krn_i = grpli[2]
+                ttcal_i = grpli[1]
+                hypoder_i = grpli[3]
+                path_list_P.append(grpli[0])
+                vp_kernel[i, :] = (np.array(krn_i))
+                if types_P[i]==0:
+                    event_index_i=int((hypo_list.index[hypo_list.iloc[:,0]==int(phase_listP_use.iloc[i,0])]).tolist()[0])
+                    hypo_kernel_P[i,(event_index_i*4):(event_index_i*4)+4]=hypoder_i
+                ttcal_P.append(float(ttcal_i))
+                phase_listP_use_dum.append(phase_listP_use.iloc[i,:])
+                ttobsP_dum.append(ttobs_P[i])
+            except Exception as e:
+                logger.info('not convergen in path P: ' + ' '.join(phase_listP_use.iloc[i, :].astype(str)))
+                logger.info(f"error = {e}")
                 continue
-
-            ttcal_i = result[1]
-            hypoder_i = result[3]
-            vp_kernel.append(result[2])
-            path_list_P.append(result[0])
-            ttcal_P.append(float(ttcal_i))
-            phase_listP_use_dum.append(phase_listP_use.iloc[i,:])
-            ttobsP_dum.append(ttobs_P[i])
-            #v_nz = np.nonzero(krn_i)[0]
-            #if v_nz.size > 0:
-            #    v_rows.extend([successful_row_idx] * v_nz.size)
-            #    v_cols.extend(v_nz)
-            #    v_data.extend(krn_i[v_nz])
-            if len(hypo_list) != 0 and types_P[i] == 0:
-                phase_id = int(phase_listP_use.iloc[i, 0])
-                if phase_id in hypo_id_to_idx:
-                    event_index_i = hypo_id_to_idx[phase_id]
-                    start_col = event_index_i * 4
-                    for offset, val in enumerate(hypoder_i):
-                        if val != 0:
-                            hypo_rows.append(successful_row_idx)
-                            hypo_cols.append(start_col + offset)
-                            hypo_data.append(val)
-            successful_row_idx += 1
 
     ttobs_P = copy(ttobsP_dum)
+    vp_kernel = vp_kernel[~np.all(vp_kernel == 0, axis=1)]
+    if len(hypo_list)!=0:
+        hypo_kernel_P = hypo_kernel_P[~np.all(hypo_kernel_P == 0, axis=1)]
     phase_listP_use = pd.DataFrame(phase_listP_use_dum)
-    vp_kernel = scsp.vstack(vp_kernel).tocsr()
-    if len(hypo_list) != 0:
-        hypo_kernel_P = scsp.csr_array((hypo_data, (hypo_rows, hypo_cols)),shape=(successful_row_idx, len(hypo_list) * 4))
+
     #save initial ray-tracing file
-    ray_out = []
-    for i, ray in enumerate(path_list_P):
-        ray_idx = np.full((len(ray), 1), i)
-        ray_out.append(np.hstack((ray, ray_idx)))
-    ray_out = np.vstack(ray_out)
+    ray1=path_list_P[0]
+    ray2=np.ones((len(ray1),1))*0
+    ray_out=np.hstack((ray1,ray2))
+    for i in range(1,len(path_list_P)):
+        ray1=path_list_P[i]
+        ray2=np.ones((len(ray1),1))*i
+        ray3=np.hstack((ray1,ray2))
+        ray_out = np.vstack((ray_out, ray3))
     np.savetxt(folder_name+'/_ray_initial',ray_out,delimiter=',',fmt='%.4f')
 
+    print('forward S phase')
+    logger.info('forward S phase')
     ttcal_S = []
     path_list_S =[]
-    phase_listS_use_dum=[]
-    ttobsS_dum=[]
-
-    if len(hypo_list) != 0:
-        hypo_id_to_idx = {int(val): idx for idx, val in enumerate(hypo_list.iloc[:, 0])}
-    vs_kernel=[]
-    hypo_rows, hypo_cols, hypo_data = [], [], []
-    successful_row_idx = 0
-    with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-        results = executor.map(velgridS.safe_forwardtwopoints,paths_S, chunksize=1)
-        for i, result in enumerate(results):
-            if isinstance(result, dict) and "error" in result:
-                logger.info('not convergen in path S: ' +' '.join(phase_listS_use.iloc[i, :].astype(str)))
-                logger.info(result['type'])
-                logger.info(result['error'])
-                logger.info(result['traceback'])
+    vs_kernel = np.zeros((len(paths_S), node.shape[0]))
+    if len(hypo_list)!=0:
+        hypo_kernel_S = np.zeros((len(paths_S),len(source_list)*4))
+    phase_listS_use_dum = []
+    ttobsS_dum = []
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        results_iterator = executor.map(velgridS.forwardtwopoints, paths_S, chunksize=1)
+        for i, grpli in enumerate(results_iterator):
+            try:
+                krn_i = grpli[2]
+                ttcal_i = grpli[1]
+                hypoder_i = grpli[3]
+                path_list_S.append(grpli[0])
+                vs_kernel[i, :] = (np.array(krn_i))
+                if types_S[i]==0:
+                    event_index_i=int((hypo_list.index[hypo_list.iloc[:,0]==float(phase_listS_use.iloc[i,0])]).tolist()[0])
+                    hypo_kernel_S[i,(event_index_i*4):(event_index_i*4)+4]=hypoder_i
+                ttcal_S.append(float(ttcal_i))
+                phase_listS_use_dum.append(phase_listS_use.iloc[i, :])
+                ttobsS_dum.append(ttobs_S[i])
+            except Exception as e:
+                logger.info('not convergen in path S: ' + ' '.join(phase_listS_use.iloc[i, :].astype(str)))
+                logger.info(f"error = {e}")
                 continue
-            ttcal_i = result[1]
-            hypoder_i = result[3]
-            path_list_S.append(result[0])
-            vs_kernel.append(result[2])
-            ttcal_S.append(float(ttcal_i))
-            phase_listS_use_dum.append(phase_listS_use.iloc[i,:])
-            ttobsS_dum.append(ttobs_S[i])
-            if len(hypo_list) != 0 and types_S[i] == 0:
-                phase_id = int(phase_listS_use.iloc[i, 0])
-                if phase_id in hypo_id_to_idx:
-                    event_index_i = hypo_id_to_idx[phase_id]
-                    start_col = event_index_i * 4
-                    for offset, val in enumerate(hypoder_i):
-                        if val != 0:
-                            hypo_rows.append(successful_row_idx)
-                            hypo_cols.append(start_col + offset)
-                            hypo_data.append(val)
-            successful_row_idx += 1
-
 
     ttobs_S = copy(ttobsS_dum)
+    vs_kernel = vs_kernel[~np.all(vs_kernel == 0, axis=1)]
+    if len(hypo_list)!=0:
+        hypo_kernel_S = hypo_kernel_S[~np.all(hypo_kernel_S == 0, axis=1)]
     phase_listS_use = pd.DataFrame(phase_listS_use_dum)
-    vs_kernel = scsp.vstack(vs_kernel).tocsr()
-    if len(hypo_list) != 0:
-        hypo_kernel_S = scsp.csr_array((hypo_data, (hypo_rows, hypo_cols)),shape=(successful_row_idx, len(hypo_list) * 4))
-
 
     #start adding node
     print('start removing node')
     logger.info('start removing node')
-    hit_count = vp_kernel.count_nonzero(axis=0)
-    hit_countPawal = vp_kernel.count_nonzero(axis=0)
-    hit_countSawal = vs_kernel.count_nonzero(axis=0)
+    hit_count=np.count_nonzero(vp_kernel,axis=0)
+    hit_countPawal=np.count_nonzero(vp_kernel,axis=0)
+    hit_countSawal=np.count_nonzero(vs_kernel,axis=0)
     fig2=plt.figure(figsize=[12,7])
     ax21=fig2.add_subplot(1,2,1)
     ax21.hist(hit_countPawal[hit_countPawal>0],bins=100)
@@ -319,33 +295,28 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
     velgridP.change_node(node)
     velgridS.change_node(node)
 
-    vp_kernel=[]
-    Ax=[]
-    Ay=[]
-    Az=[]
-    with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-        results = executor.map(velgridP.safe_crkernel_tensor,path_list_P,chunksize=1)
-        for i, result in enumerate(results):
-            vp_kernel.append(result[0])
-            Ax.append(result[1])
-            Ay.append(result[2])
-            Az.append(result[3])
-    vp_kernel = scsp.vstack(vp_kernel).tocsr()
-    Ax = scsp.vstack(Ax).tocsr()
-    Ay = scsp.vstack(Ay).tocsr()
-    Az = scsp.vstack(Az).tocsr()
+    vp_kernel = np.zeros((len(path_list_P), node.shape[0]))
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        results_iterator = executor.map(velgridP.crkernel, path_list_P, chunksize=1)
+
+        for i, krn_i in enumerate(results_iterator):
+            vp_kernel[i,:]=krn_i
+
+    vs_kernel = np.zeros((len(path_list_S), node.shape[0]))
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        results_iterator = executor.map(velgridS.crkernel, path_list_S, chunksize=1)
+
+        for i, krn_i in enumerate(results_iterator):
+            vs_kernel[i,:]=krn_i
 
 
     print('start adding node')
     logger.info('start adding node')
     isadd = update_grid
-    step_add=1
     while (isadd == True):
-        print('add_node_step: '+str(step_add))
-        logger.info('add_node_step: '+str(step_add))
-        hit_count = vp_kernel.count_nonzero(axis=0)
+        hit_count = np.count_nonzero(vp_kernel, axis=0)
         node_tetahedron = Delaunay(node)
-        class_is_addnode = is_addnode(hit_count, up_threshold, node, deltn, interpP, interpS, nu_cpu=nu_cpu)
+        class_is_addnode = is_addnode(hit_count, up_threshold, node, deltn, interpP, interpS)
         sim=node_tetahedron.simplices
         added_node_list,added_velP_list,added_velS_list = class_is_addnode.add_simultanius(sim)
         if len(added_velP_list)==0:
@@ -358,64 +329,43 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
         velgridP.change_node(node)
         velgridS.change_node(node)
 
-        print('calculating kernel node')
-        logger.info('calculating kernel node')
-        vp_kernel=[]
-        Ax=[]
-        Ay=[]
-        Az=[]
-        with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-            results = executor.map(velgridP.safe_crkernel_tensor, path_list_P, chunksize=1)
-            for i, result in enumerate(results):
-                vp_kernel.append(result[0])
-                Ax.append(result[1])
-                Ay.append(result[2])
-                Az.append(result[3])
-        vp_kernel = scsp.vstack(vp_kernel).tocsr()
-        Ax = scsp.vstack(Ax).tocsr()
-        Ay = scsp.vstack(Ay).tocsr()
-        Az = scsp.vstack(Az).tocsr()
-        step_add += 1
+        vp_kernel = np.zeros((len(path_list_P), node.shape[0]))
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            results_iterator = executor.map(velgridP.crkernel, path_list_P, chunksize=1)
 
+            for i, krn_i in enumerate(results_iterator):
+                vp_kernel[i, :] = krn_i
+
+        vs_kernel = np.zeros((len(path_list_S), node.shape[0]))
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            results_iterator = executor.map(velgridS.crkernel, path_list_S, chunksize=1)
+
+            for i, krn_i in enumerate(results_iterator):
+                vs_kernel[i, :] = krn_i
 
     # start removing node
-    print('start removing node by density tensor')
-    logger.info('start removing node by density tensor')
-    dens=count_tensor_dens(Ax,Ay,Az)
-    node=node[dens>=dens_thres,:]
-    vel_node_P=vel_node_P[dens>=dens_thres]
-    vel_node_S=vel_node_S[dens>=dens_thres]
-    velgridP.change_node(node)
-    velgridS.change_node(node)
-    vp_kernel=[]
-    with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-        results = executor.map(velgridP.safe_crkernel,path_list_P,chunksize=1)
-        for i, result in enumerate(results):
-            vp_kernel.append(result)
-    vp_kernel = scsp.vstack(vp_kernel).tocsr()
-
-    # start removing node
-    print('start removing node by RHC')
-    logger.info('start removing node by RHC')
-    hit_count = vp_kernel.count_nonzero(axis=0)
+    print('start removing node')
+    logger.info('start removing node')
+    hit_count = np.count_nonzero(vp_kernel, axis=0)
     node=node[hit_count>low_threshold,:]
     vel_node_P=vel_node_P[hit_count>low_threshold]
     vel_node_S=vel_node_S[hit_count>low_threshold]
     velgridP.change_node(node)
     velgridS.change_node(node)
 
-    vp_kernel=[]
-    with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-        results = executor.map(velgridP.safe_crkernel,path_list_P,chunksize=1)
-        for i, result in enumerate(results):
-            vp_kernel.append(result)
-    vp_kernel = scsp.vstack(vp_kernel).tocsr()
-    vs_kernel = []
-    with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-        results = executor.map(velgridS.safe_crkernel,path_list_S,chunksize=1)
-        for i, result in enumerate(results):
-            vs_kernel.append(result)
-    vs_kernel = scsp.vstack(vs_kernel).tocsr()
+    vp_kernel = np.zeros((len(path_list_P), node.shape[0]))
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        results_iterator = executor.map(velgridP.crkernel, path_list_P, chunksize=1)
+
+        for i, krn_i in enumerate(results_iterator):
+            vp_kernel[i,:]=krn_i
+
+    vs_kernel = np.zeros((len(path_list_S), node.shape[0]))
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        results_iterator = executor.map(velgridS.crkernel, path_list_S, chunksize=1)
+
+        for i, krn_i in enumerate(results_iterator):
+            vs_kernel[i,:]=krn_i
 
 
     ttobs_P=np.array(ttobs_P)
@@ -430,14 +380,18 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
 
     #update_data_use
     vp_kernel=vp_kernel[abs(t_res_P_awal)<r_time_P,:]
+    vp_kernel=scsp.csr_matrix(vp_kernel)
     if len(hypo_list)!=0:
         hypo_kernel_P=hypo_kernel_P[abs(t_res_P_awal)<r_time_P,:]
+        hypo_kernel_P=scsp.csr_matrix(hypo_kernel_P)
     phase_listP_use=phase_listP_use.loc[phase_listP_use['t_res']<r_time_P]
     t_res_P_awal=t_res_P_awal[abs(t_res_P_awal)<r_time_P]
 
     vs_kernel=vs_kernel[abs(t_res_S_awal)<r_time_S,:]
+    vs_kernel=scsp.csr_matrix(vs_kernel)
     if len(hypo_list)!=0:
         hypo_kernel_S=hypo_kernel_S[abs(t_res_S_awal)<r_time_S,:]
+        hypo_kernel_S=scsp.csr_matrix(hypo_kernel_S)
     phase_listS_use=phase_listS_use.loc[phase_listS_use['t_res']<r_time_S]
     t_res_S_awal=t_res_S_awal[abs(t_res_S_awal)<r_time_S]
 
@@ -469,8 +423,8 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
         vs_kernel_zeros = np.zeros((vp_kernel_inv.shape[0],vs_kernel_inv.shape[1]))
 
         weight_inv = scsp.diags(1 / (weight[weight != 0]))
-        smooth_damp=scsp.csr_array(smooth_matrix(node[weight != 0,:]))*damping_2
-        zeros_smooth=scsp.csr_array(smooth_damp.shape)
+        smooth_damp=scsp.csr_matrix(smooth_matrix(node[weight != 0,:]))*damping_2
+        zeros_smooth=scsp.csr_matrix(smooth_damp.shape)
 
         v_stack_P = scsp.vstack([vp_kernel_inv, vp_kernel_zeros, smooth_damp, zeros_smooth])
         v_stack_S = scsp.vstack([vs_kernel_zeros, vs_kernel_inv, zeros_smooth, smooth_damp])
@@ -478,7 +432,7 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
         inv_matrix_S = v_stack_S.dot(weight_inv)
 
         if len(hypo_list)!=0:
-            hypo_zero=scsp.csr_array((smooth_damp.shape[0]*2, hypo_kernel_P.shape[1]))
+            hypo_zero=scsp.csr_matrix((smooth_damp.shape[0]*2, hypo_kernel_P.shape[1]))
             hypo_kernel_inv=scsp.vstack((hypo_kernel_P,hypo_kernel_S,hypo_zero))
             inv_matrix_hypo = scsp.hstack((hypo_kernel_inv, inv_matrix_P, inv_matrix_S))
         else:
@@ -497,11 +451,11 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
         inversion_result = lsmr(inv_matrix_hypo, t_res_inv, damp=damping_1)
 
         if len(hypo_list)!=0:
-            ds_P=inversion_result[0][hypo_kernel_P.shape[1]:hypo_kernel_P.shape[1]+vp_kernel_inv.shape[1]]*weight_inv.diagonal()
-            ds_S=inversion_result[0][hypo_kernel_P.shape[1]+vp_kernel_inv.shape[1]:]*weight_inv.diagonal()
+            ds_P=np.matmul(inversion_result[0][hypo_kernel_P.shape[1]:hypo_kernel_P.shape[1]+vp_kernel_inv.shape[1]],weight_inv)
+            ds_S=np.matmul(inversion_result[0][hypo_kernel_P.shape[1]+vp_kernel_inv.shape[1]:],weight_inv)
         else:
-            ds_P = inversion_result[0][:vp_kernel_inv.shape[1]]*weight_inv.diagonal()
-            ds_S = inversion_result[0][vp_kernel_inv.shape[1]:]*weight_inv.diagonal()
+            ds_P = np.matmul(inversion_result[0][:vp_kernel_inv.shape[1]], weight_inv)
+            ds_S = np.matmul(inversion_result[0][vp_kernel_inv.shape[1]:], weight_inv)
 
         #acond=inversion_result[6]
         print("CND: "+str(inversion_result[6]))
@@ -584,14 +538,14 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
         node_all = np.vstack((node, node_outer))
         vel_allP = np.hstack((vel_node_P, modvel_outer.Vp))
         interpP = RBFInterpolator(node_all, vel_allP, kernel='linear', neighbors=8)
-        gridVp = (np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
-                           decimals=4).reshape(len(xnode), len(ynode), len(znode))).astype(np.float32)
+        gridVp = np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
+                           decimals=4).reshape(len(xnode), len(ynode), len(znode))
         velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin)
 
         vel_allS = np.hstack((vel_node_S, modvel_outer.Vs))
         interpS = RBFInterpolator(node_all, vel_allS, kernel='linear', neighbors=8)
-        gridVs = (np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
-                           decimals=4).reshape(len(xnode), len(ynode), len(znode))).astype(np.float32)
+        gridVs = np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
+                           decimals=4).reshape(len(xnode), len(ynode), len(znode))
         velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin)
 
         print('start forward after iteration: ',iter)
@@ -600,93 +554,72 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
         # P Phase forward
         ttcal_P = []
         path_list_P = []
-        phase_listP_use_dum = []
-        ttobsP_dum = []
-        if len(hypo_list) != 0:
-            hypo_id_to_idx = {int(val): idx for idx, val in enumerate(hypo_list.iloc[:, 0])}
-        vp_kernel=[]
-        hypo_rows, hypo_cols, hypo_data = [], [], []
-        successful_row_idx = 0
-        with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-            results=executor.map(velgridP.safe_forwardtwopoints,paths_P,chunksize=1)
-            for i, result in enumerate(results):
-                if isinstance(result, dict) and "error" in result:
-                    logger.info('not convergen in path P: ' + ' '.join(phase_listP_use.iloc[i, :].astype(str)))
-                    logger.info(result['type'])
-                    logger.info(result['error'])
-                    logger.info(result['traceback'])
-                    continue
+        vp_kernel = np.zeros((len(paths_P), node.shape[0]))
+        if len(hypo_list)!=0:
+            hypo_kernel_P = np.zeros((len(paths_P), len(hypo_list) * 4))
+        phase_listP_use_dum=[]
+        ttobsP_dum=[]
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            results_iterator = executor.map(velgridP.forwardtwopoints, paths_P, chunksize=1)
 
-                ttcal_i = result[1]
-                hypoder_i = result[3]
-                path_list_P.append(result[0])
-                vp_kernel.append(result[2])
-                ttcal_P.append(float(ttcal_i))
-                phase_listP_use_dum.append(phase_listP_use.iloc[i, :])
-                ttobsP_dum.append(ttobs_P[i])
-                if len(hypo_list) != 0 and types_P[i] == 0:
-                    phase_id = int(phase_listP_use.iloc[i, 0])
-                    if phase_id in hypo_id_to_idx:
-                        event_index_i = hypo_id_to_idx[phase_id]
-                        start_col = event_index_i * 4
-                        for offset, val in enumerate(hypoder_i):
-                            if val != 0:
-                                hypo_rows.append(successful_row_idx)
-                                hypo_cols.append(start_col + offset)
-                                hypo_data.append(val)
-                successful_row_idx += 1
+            for i, grpli in enumerate(results_iterator):
+                try:
+                    krn_i = grpli[2]
+                    ttcal_i = grpli[1]
+                    hypoder_i = grpli[3]
+                    path_list_P.append(grpli[0])
+                    vp_kernel[i, :] = (np.array(krn_i))
+                    if types_P==0:
+                        event_index_i=int((hypo_list.index[hypo_list.iloc[:,0]==float(phase_listP_use.iloc[i,0])]).tolist()[0])
+                        hypo_kernel_P[i, (event_index_i * 4):(event_index_i * 4) + 4] = hypoder_i
+                    ttcal_P.append(float(ttcal_i))
+                    phase_listP_use_dum.append(phase_listP_use.iloc[i, :])
+                    ttobsP_dum.append(ttobs_P[i])
+                except Exception as e:
+                    logger.info(f"not convergen in path P: {' '.join(phase_listP_use.iloc[i, :].astype(str))}")
+                    logger.info(f"error = {e}")
+                    continue
 
         ttobs_P=copy(ttobsP_dum)
+        vp_kernel = vp_kernel[~np.all(vp_kernel == 0, axis=1)]
+        if len(hypo_list)!=0:
+            hypo_kernel_P = hypo_kernel_P[~np.all(hypo_kernel_P == 0, axis=1)]
         phase_listP_use = pd.DataFrame(phase_listP_use_dum)
-        vp_kernel = scsp.vstack(vp_kernel).tocsr()
-        if len(hypo_list) != 0:
-            hypo_kernel_P = scsp.csr_array((hypo_data, (hypo_rows, hypo_cols)),shape=(successful_row_idx, len(hypo_list) * 4))
 
-        #forward S
         ttcal_S = []
         path_list_S = []
-        phase_listS_use_dum = []
-        ttobsS_dum = []
-        if len(hypo_list) != 0:
-            hypo_id_to_idx = {int(val): idx for idx, val in enumerate(hypo_list.iloc[:, 0])}
-        vs_kernel=[]
-        hypo_rows, hypo_cols, hypo_data = [], [], []
-        successful_row_idx = 0
-        with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-            results = executor.map(velgridS.safe_forwardtwopoints, paths_S, chunksize=1)
-            for i, result in enumerate(results):
-                if isinstance(result, dict) and "error" in result:
-                    logger.info('not convergen in path S: ' + ' '.join(phase_listS_use.iloc[i, :].astype(str)))
-                    logger.info(result['type'])
-                    logger.info(result['error'])
-                    logger.info(result['traceback'])
-                    continue
-                ttcal_i = result[1]
-                hypoder_i = result[3]
-                path_list_S.append(result[0])
-                vs_kernel.append(result[2])
-                ttcal_S.append(float(ttcal_i))
-                phase_listS_use_dum.append(phase_listS_use.iloc[i, :])
-                ttobsS_dum.append(ttobs_S[i])
-                if len(hypo_list) != 0 and types_S[i] == 0:
-                    phase_id = int(phase_listS_use.iloc[i, 0])
-                    if phase_id in hypo_id_to_idx:
-                        event_index_i = hypo_id_to_idx[phase_id]
-                        start_col = event_index_i * 4
-                        for offset, val in enumerate(hypoder_i):
-                            if val != 0:
-                                hypo_rows.append(successful_row_idx)
-                                hypo_cols.append(start_col + offset)
-                                hypo_data.append(val)
-                successful_row_idx += 1
+        vs_kernel = np.zeros((len(paths_S), node.shape[0]))
+        if len(hypo_list)!=0:
+            hypo_kernel_S = np.zeros((len(paths_S), len(source_list) * 4))
+        phase_listS_use_dum=[]
+        ttobsS_dum=[]
+        # S Phase forward
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            results_iterator = executor.map(velgridS.forwardtwopoints, paths_S, chunksize=1)
 
+            for i, grpli in enumerate(results_iterator):
+                try:
+                    krn_i = grpli[2]
+                    ttcal_i = grpli[1]
+                    hypoder_i = grpli[3]
+                    path_list_S.append(grpli[0])
+                    vs_kernel[i, :] = (np.array(krn_i))
+                    if types_S==0:
+                        event_index_i=int((hypo_list.index[hypo_list.iloc[:,0]==float(phase_listS_use.iloc[i,0])]).tolist()[0])
+                        hypo_kernel_S[i, (event_index_i * 4):(event_index_i * 4) + 4] = hypoder_i
+                    ttcal_S.append(float(ttcal_i))
+                    phase_listS_use_dum.append(phase_listS_use.iloc[i, :])
+                    ttobsS_dum.append(ttobs_S[i])
+                except:
+                    logger.info('not convergen in path S: ' + ' '.join(phase_listS_use.iloc[i, :].astype(str)))
+                    logger.info(f"error = {e}")
+                    continue
 
         ttobs_S=copy(ttobsS_dum)
+        vs_kernel = vs_kernel[~np.all(vs_kernel == 0, axis=1)]
+        if len(hypo_list)!=0:
+            hypo_kernel_S = hypo_kernel_S[~np.all(hypo_kernel_S == 0, axis=1)]
         phase_listS_use = pd.DataFrame(phase_listS_use_dum)
-        vs_kernel = scsp.vstack(vs_kernel).tocsr()
-        if len(hypo_list) != 0:
-            hypo_kernel_S = scsp.csr_array((hypo_data, (hypo_rows, hypo_cols)),shape=(successful_row_idx, len(hypo_list) * 4))
-
 
 
         ttobs_P = np.array(ttobs_P).flatten()
@@ -701,15 +634,19 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
 
         #update data
         vp_kernel = vp_kernel[abs(t_res_P) < r_time_P, :]
+        vp_kernel = scsp.csr_matrix(vp_kernel)
         if len(hypo_list)!=0:
             hypo_kernel_P = hypo_kernel_P[abs(t_res_P) < r_time_P, :]
+            hypo_kernel_P = scsp.csr_matrix(hypo_kernel_P)
         phase_listP_use = phase_listP_use.loc[phase_listP_use['t_res'] < r_time_P]
         path_list_P=list(itertools.compress(path_list_P, abs(t_res_P) < r_time_P))
         t_res_P = t_res_P[abs(t_res_P) < r_time_P]
 
         vs_kernel = vs_kernel[abs(t_res_S) < r_time_S, :]
+        vs_kernel = scsp.csr_matrix(vs_kernel)
         if len(hypo_list)!=0:
             hypo_kernel_S = hypo_kernel_S[abs(t_res_S) < r_time_S, :]
+            hypo_kernel_S = scsp.csr_matrix(hypo_kernel_S)
         phase_listS_use = phase_listS_use.loc[phase_listS_use['t_res'] < r_time_S]
         path_list_S = list(itertools.compress(path_list_S, abs(t_res_S) < r_time_S))
         t_res_S = t_res_S[abs(t_res_S) < r_time_S]
@@ -733,13 +670,10 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
         logger.info('start adding node')
 
         isadd = update_grid_after
-        step_add=1
         while isadd == True:
-            print('add_node_step: ' + str(step_add))
-            logger.info('add_node_step: ' + str(step_add))
-            hit_count = vp_kernel.count_nonzero(axis=0)
+            hit_count = np.count_nonzero(vp_kernel, axis=0)
             node_tetahedron = Delaunay(node)
-            class_is_addnode = is_addnode(hit_count, up_threshold, node, deltn, interpP, interpS, nu_cpu=nu_cpu)
+            class_is_addnode = is_addnode(hit_count, up_threshold, node, deltn, interpP, interpS)
             sim = node_tetahedron.simplices
             added_node_list, added_velP_list, added_velS_list = class_is_addnode.add_simultanius(sim)
             if len(added_velP_list) == 0:
@@ -752,65 +686,47 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
             velgridP.change_node(node)
             velgridS.change_node(node)
 
-            print('calculating kernel node')
-            logger.info('calculating kernel node')
-            vp_kernel=[]
-            Ax=[]
-            Ay=[]
-            Az=[]
-            with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-                results = executor.map(velgridP.safe_crkernel_tensor, path_list_P, chunksize=1)
-                for i, result in enumerate(results):
-                    vp_kernel.append(result[0])
-                    Ax.append(result[1])
-                    Ay.append(result[2])
-                    Az.append(result[3])
-            vp_kernel = scsp.vstack(vp_kernel).tocsr()
-            Ax = scsp.vstack(Ax).tocsr()
-            Ay = scsp.vstack(Ay).tocsr()
-            Az = scsp.vstack(Az).tocsr()
-            step_add +=1
+            vp_kernel = np.zeros((len(path_list_P), node.shape[0]))
+            with concurrent.futures.ProcessPoolExecutor() as executor:
+                results_iterator = executor.map(velgridP.crkernel, path_list_P, chunksize=1)
 
+                for i, krn_i in enumerate(results_iterator):
+                    vp_kernel[i, :] = krn_i
+
+            vs_kernel = np.zeros((len(path_list_S), node.shape[0]))
+            with concurrent.futures.ProcessPoolExecutor() as executor:
+                results_iterator = executor.map(velgridS.crkernel, path_list_S, chunksize=1)
+
+                for i, krn_i in enumerate(results_iterator):
+                    vs_kernel[i, :] = krn_i
 
         if update_grid_after==True:
             # start removing node
-            print('start removing node by density tensor')
-            logger.info('start removing node by density tensor')
-            dens = count_tensor_dens(Ax, Ay, Az)
-            node = node[dens >= dens_thres, :]
-            vel_node_P = vel_node_P[dens >= dens_thres]
-            vel_node_S = vel_node_S[dens >= dens_thres]
-            velgridP.change_node(node)
-            velgridS.change_node(node)
-            vp_kernel = []
-            with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-                results = executor.map(velgridP.safe_crkernel, path_list_P, chunksize=1)
-                for i, result in enumerate(results):
-                    vp_kernel.append(result)
-            vp_kernel = scsp.vstack(vp_kernel).tocsr()
-
-            print('start removing node by RHC')
-            logger.info('start removing node by RHC')
-            hit_count = vp_kernel.count_nonzero(axis=0)
+            print('start removing node')
+            logger.info('start removing node')
+            hit_count = np.count_nonzero(vp_kernel, axis=0)
             node = node[hit_count > low_threshold, :]
             vel_node_P = vel_node_P[hit_count > low_threshold]
             vel_node_S = vel_node_S[hit_count > low_threshold]
             velgridP.change_node(node)
             velgridS.change_node(node)
 
-            vp_kernel=[]
-            with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-                results = executor.map(velgridP.safe_crkernel, path_list_P, chunksize=1)
-                for i, result in enumerate(results):
-                    vp_kernel.append(result)
-            vp_kernel = scsp.vstack(vp_kernel).tocsr()
-            vs_kernel = []
-            with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-                results = executor.map(velgridS.safe_crkernel, path_list_S, chunksize=1)
-                for i, result in enumerate(results):
-                    vs_kernel.append(result)
-            vs_kernel = scsp.vstack(vs_kernel).tocsr()
+            vp_kernel = np.zeros((len(path_list_P), node.shape[0]))
+            with concurrent.futures.ProcessPoolExecutor() as executor:
+                results_iterator = executor.map(velgridP.crkernel, path_list_P, chunksize=1)
 
+                for i, krn_i in enumerate(results_iterator):
+                    vp_kernel[i, :] = krn_i
+
+            vs_kernel = np.zeros((len(path_list_S), node.shape[0]))
+            with concurrent.futures.ProcessPoolExecutor() as executor:
+                results_iterator = executor.map(velgridS.crkernel, path_list_S, chunksize=1)
+
+                for i, krn_i in enumerate(results_iterator):
+                    vs_kernel[i, :] = krn_i
+
+        vp_kernel=scsp.csr_matrix(vp_kernel)
+        vs_kernel=scsp.csr_matrix(vs_kernel)
 
     ax2=fig1.add_subplot(2,2,2)
     n2, _, _ =ax2.hist(t_res,bins=30)
@@ -821,8 +737,8 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
     ax2.set_ylabel('Count')
     ax2.title.set_text('Final (after inversion)')
 
-    hit_countP = vp_kernel.count_nonzero(axis=0)
-    hit_countS = vs_kernel.count_nonzero(axis=0)
+    hit_countP = np.count_nonzero(vp_kernel_inv, axis=0)
+    hit_countS = np.count_nonzero(vs_kernel_inv, axis=0)
     ax22=fig2.add_subplot(1,2,2)
     ax22.hist(hit_countP,bins=100)
     ax22.set_title('Final RHC distribution of P wave',fontsize=15,fontweight='bold')
@@ -856,8 +772,8 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
     df_grid = pd.DataFrame(node, columns=['X', 'Y', 'Z'])
     df_grid['Vp'] = vel_node_P
     df_grid['Vs'] = vel_node_S
-    df_grid['hcP'] = vp_kernel.count_nonzero(axis=0)
-    df_grid['hcS'] = vs_kernel.count_nonzero(axis=0)
+    df_grid['hcP'] = np.count_nonzero(vp_kernel, axis=0)
+    df_grid['hcS'] = np.count_nonzero(vs_kernel, axis=0)
     df_grid.to_csv(folder_name+'/vel_invers.csv', index=False)
     source_list_invers.to_csv(folder_name+'/source_invers.csv', index=False)
 
@@ -871,12 +787,14 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
     #plt.show()
 
     #save ray-tracing file
-    ray_out = []
-    for i, ray in enumerate(path_list_P):
-        ray_idx = np.full((len(ray), 1), i)
-        ray_out.append(np.hstack((ray, ray_idx)))
-
-    ray_out = np.vstack(ray_out)
+    ray1=path_list_P[0]
+    ray2=np.ones((len(ray1),1))*0
+    ray_out=np.hstack((ray1,ray2))
+    for i in range(1,len(path_list_P)):
+        ray1=path_list_P[i]
+        ray2=np.ones((len(ray1),1))*i
+        ray3=np.hstack((ray1,ray2))
+        ray_out = np.vstack((ray_out, ray3))
     np.savetxt(folder_name+'/_ray_final',ray_out,delimiter=',',fmt='%.4f')
 
     with ZipFile(folder_name+'/compress.zip', 'w') as zips:

@@ -1,4 +1,4 @@
-from .all_func import VelocityGrid, vor_volumes, smooth_matrix, is_addnode, count_tensor_dens
+from .all_func import VelocityGrid, vor_volumes, smooth_matrix, is_addnode
 from copy import copy
 from scipy.sparse.linalg import lsmr
 import scipy.sparse as scsp
@@ -15,7 +15,7 @@ import os
 
 
 def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, delt, deltn, xfac, iter1, iter2, tmin,
-                 iteration_number, up_threshold, low_threshold, dens_thres, d_rms, r_time_P, r_time_S, damping_1, damping_2,
+                 iteration_number, up_threshold, low_threshold, d_rms, r_time_P, r_time_S, damping_1, damping_2,
                update_grid,folder_name,update_grid_after=False,nu_cpu=os.cpu_count()-1):
     #load model parameter
     f_path='./'+folder_name
@@ -320,21 +320,30 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
     velgridS.change_node(node)
 
     vp_kernel=[]
-    Ax=[]
-    Ay=[]
-    Az=[]
+    successful_rows_P = 0
     with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-        results = executor.map(velgridP.safe_crkernel_tensor,path_list_P,chunksize=1)
+        results = executor.map(velgridP.safe_crkernel,path_list_P,chunksize=1)
         for i, result in enumerate(results):
-            vp_kernel.append(result[0])
-            Ax.append(result[1])
-            Ay.append(result[2])
-            Az.append(result[3])
+            vp_kernel.append(result)
+            successful_rows_P += 1
     vp_kernel = scsp.vstack(vp_kernel).tocsr()
-    Ax = scsp.vstack(Ax).tocsr()
-    Ay = scsp.vstack(Ay).tocsr()
-    Az = scsp.vstack(Az).tocsr()
 
+    #successful_rows_S = 0
+    #with concurrent.futures.ProcessPoolExecutor() as executor:
+    #    results = executor.map(velgridS.safe_crkernel,path_list_S,chunksize=1)
+    #    for i, result in enumerate(results):
+    #        if isinstance(result, Exception):
+    #            logger.info('not convergen in path S: ' +' '.join(phase_listS_use.iloc[i, :].astype(str)))
+    #            logger.info(f"error = {result}")
+    #            continue
+    #        krn_arr = np.array(result, dtype=np.float32)
+    #        nz = np.nonzero(krn_arr)
+    #        if nz.size > 0:
+    #            v_rows.extend([successful_rows_S] * nz.size)
+    #            v_cols.extend(nz)
+    #            v_data.extend(krn_arr[nz])
+    #        successful_rows_S += 1
+    #vs_kernel = scsp.csr_matrix((v_data, (v_rows, v_cols)),shape=(successful_rows_S, node.shape[0]))
 
     print('start adding node')
     logger.info('start adding node')
@@ -361,42 +370,30 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
         print('calculating kernel node')
         logger.info('calculating kernel node')
         vp_kernel=[]
-        Ax=[]
-        Ay=[]
-        Az=[]
+        successful_rows_P = 0
         with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-            results = executor.map(velgridP.safe_crkernel_tensor, path_list_P, chunksize=1)
+            results = executor.map(velgridP.safe_crkernel, path_list_P, chunksize=1)
             for i, result in enumerate(results):
-                vp_kernel.append(result[0])
-                Ax.append(result[1])
-                Ay.append(result[2])
-                Az.append(result[3])
+                vp_kernel.append(result)
+                successful_rows_P += 1
         vp_kernel = scsp.vstack(vp_kernel).tocsr()
-        Ax = scsp.vstack(Ax).tocsr()
-        Ay = scsp.vstack(Ay).tocsr()
-        Az = scsp.vstack(Az).tocsr()
         step_add += 1
-
-
-    # start removing node
-    print('start removing node by density tensor')
-    logger.info('start removing node by density tensor')
-    dens=count_tensor_dens(Ax,Ay,Az)
-    node=node[dens>=dens_thres,:]
-    vel_node_P=vel_node_P[dens>=dens_thres]
-    vel_node_S=vel_node_S[dens>=dens_thres]
-    velgridP.change_node(node)
-    velgridS.change_node(node)
-    vp_kernel=[]
-    with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-        results = executor.map(velgridP.safe_crkernel,path_list_P,chunksize=1)
-        for i, result in enumerate(results):
-            vp_kernel.append(result)
-    vp_kernel = scsp.vstack(vp_kernel).tocsr()
+        #successful_rows_S = 0
+        #with concurrent.futures.ProcessPoolExecutor() as executor:
+        #    futures = [executor.submit(velgridS.crkernel, path) for path in path_list_S]
+        #    for i, future in enumerate(futures):
+        #        krn_arr = np.array(future.result(), dtype=np.float32)
+        #        nz = np.nonzero(krn_arr)
+        #        if nz.size > 0:
+        #            v_rows.extend([successful_rows_S] * nz.size)
+        #            v_cols.extend(nz)
+        #            v_data.extend(krn_arr[nz])
+        #        successful_rows_S += 1
+        #vs_kernel = scsp.csr_matrix((v_data, (v_rows, v_cols)), shape=(successful_rows_S, node.shape[0]))
 
     # start removing node
-    print('start removing node by RHC')
-    logger.info('start removing node by RHC')
+    print('start removing node')
+    logger.info('start removing node')
     hit_count = vp_kernel.count_nonzero(axis=0)
     node=node[hit_count>low_threshold,:]
     vel_node_P=vel_node_P[hit_count>low_threshold]
@@ -405,16 +402,20 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
     velgridS.change_node(node)
 
     vp_kernel=[]
+    successful_rows_P = 0
     with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
         results = executor.map(velgridP.safe_crkernel,path_list_P,chunksize=1)
         for i, result in enumerate(results):
             vp_kernel.append(result)
+            successful_rows_P += 1
     vp_kernel = scsp.vstack(vp_kernel).tocsr()
     vs_kernel = []
+    successful_rows_S = 0
     with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
         results = executor.map(velgridS.safe_crkernel,path_list_S,chunksize=1)
         for i, result in enumerate(results):
             vs_kernel.append(result)
+            successful_rows_S += 1
     vs_kernel = scsp.vstack(vs_kernel).tocsr()
 
 
@@ -755,42 +756,35 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
             print('calculating kernel node')
             logger.info('calculating kernel node')
             vp_kernel=[]
-            Ax=[]
-            Ay=[]
-            Az=[]
-            with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-                results = executor.map(velgridP.safe_crkernel_tensor, path_list_P, chunksize=1)
-                for i, result in enumerate(results):
-                    vp_kernel.append(result[0])
-                    Ax.append(result[1])
-                    Ay.append(result[2])
-                    Az.append(result[3])
-            vp_kernel = scsp.vstack(vp_kernel).tocsr()
-            Ax = scsp.vstack(Ax).tocsr()
-            Ay = scsp.vstack(Ay).tocsr()
-            Az = scsp.vstack(Az).tocsr()
-            step_add +=1
-
-
-        if update_grid_after==True:
-            # start removing node
-            print('start removing node by density tensor')
-            logger.info('start removing node by density tensor')
-            dens = count_tensor_dens(Ax, Ay, Az)
-            node = node[dens >= dens_thres, :]
-            vel_node_P = vel_node_P[dens >= dens_thres]
-            vel_node_S = vel_node_S[dens >= dens_thres]
-            velgridP.change_node(node)
-            velgridS.change_node(node)
-            vp_kernel = []
+            successful_rows_P = 0
             with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
                 results = executor.map(velgridP.safe_crkernel, path_list_P, chunksize=1)
                 for i, result in enumerate(results):
                     vp_kernel.append(result)
+                    successful_rows_P += 1
             vp_kernel = scsp.vstack(vp_kernel).tocsr()
+            step_add +=1
+            successful_rows_S = 0
+            #with concurrent.futures.ProcessPoolExecutor() as executor:
+            #    results = executor.map(velgridS.safe_crkernel, path_list_S, chunksize=1)
+            #    for i, result in enumerate(results):
+            #        if isinstance(result, Exception):
+            #            logger.info('not convergen in path S: ' + ' '.join(phase_listS_use.iloc[i, :].astype(str)))
+            #            logger.info(f"error = {result}")
+            #            continue
+            #        krn_arr = np.array(result, dtype=np.float32)
+            #        nz = np.nonzero(krn_arr)
+            #        if nz.size > 0:
+            #            v_rows.extend([successful_rows_S] * nz.size)
+            #            v_cols.extend(nz)
+            #            v_data.extend(krn_arr[nz])
+            #        successful_rows_S += 1
+            #vs_kernel = scsp.csr_matrix((v_data, (v_rows, v_cols)), shape=(successful_rows_S, node.shape[0]))
 
-            print('start removing node by RHC')
-            logger.info('start removing node by RHC')
+        if update_grid_after==True:
+            # start removing node
+            print('start removing node')
+            logger.info('start removing node')
             hit_count = vp_kernel.count_nonzero(axis=0)
             node = node[hit_count > low_threshold, :]
             vel_node_P = vel_node_P[hit_count > low_threshold]
@@ -799,16 +793,20 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
             velgridS.change_node(node)
 
             vp_kernel=[]
+            successful_rows_P = 0
             with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
                 results = executor.map(velgridP.safe_crkernel, path_list_P, chunksize=1)
                 for i, result in enumerate(results):
                     vp_kernel.append(result)
+                    successful_rows_P += 1
             vp_kernel = scsp.vstack(vp_kernel).tocsr()
             vs_kernel = []
+            successful_rows_S = 0
             with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
                 results = executor.map(velgridS.safe_crkernel, path_list_S, chunksize=1)
                 for i, result in enumerate(results):
                     vs_kernel.append(result)
+                    successful_rows_S += 1
             vs_kernel = scsp.vstack(vs_kernel).tocsr()
 
 
