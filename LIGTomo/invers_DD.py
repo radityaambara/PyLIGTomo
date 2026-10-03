@@ -501,7 +501,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         # Ambil indeks baris kernel
         idx1 = idx1[0]
         idx2 = idx2[0]
-        if float(DDphase_P_use.iloc[i]["delta_tt"])-(float(ttcal_P[idx1] - ttcal_P[idx2]))>r_time_P:
+        if abs(float(DDphase_P_use.iloc[i]["delta_tt"])-(float(ttcal_P[idx1] - ttcal_P[idx2])))>r_time_P:
             continue
         kernel1 = vp_kernel[idx1, :]
         kernel2 = vp_kernel[idx2, :]
@@ -558,7 +558,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         # Ambil indeks baris kernel
         idx1 = idx1[0]
         idx2 = idx2[0]
-        if float(DDphase_S_use.iloc[i]["delta_tt"])-(float(ttcal_S[idx1] - ttcal_S[idx2]))>r_time_S:
+        if abs(float(DDphase_S_use.iloc[i]["delta_tt"])-(float(ttcal_S[idx1] - ttcal_S[idx2])))>r_time_S:
             continue
         kernel1 = vs_kernel[idx1, :]
         kernel2 = vs_kernel[idx2, :]
@@ -887,7 +887,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
             # Ambil indeks baris kernel
             idx1 = idx1[0]
             idx2 = idx2[0]
-            if float(DDphase_P_use.iloc[i]["delta_tt"])-(float(ttcal_P[idx1] - ttcal_P[idx2]))>r_time_P:
+            if abs(float(DDphase_P_use.iloc[i]["delta_tt"])-(float(ttcal_P[idx1] - ttcal_P[idx2])))>r_time_P:
                 continue
             kernel1 = vp_kernel[idx1, :]
             kernel2 = vp_kernel[idx2, :]
@@ -944,7 +944,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
             # Ambil indeks baris kernel
             idx1 = idx1[0]
             idx2 = idx2[0]
-            if float(DDphase_S_use.iloc[i]["delta_tt"])-(float(ttcal_S[idx1] - ttcal_S[idx2]))>r_time_S:
+            if abs(float(DDphase_S_use.iloc[i]["delta_tt"])-(float(ttcal_S[idx1] - ttcal_S[idx2])))>r_time_S:
                 continue
             kernel1 = vs_kernel[idx1, :]
             kernel2 = vs_kernel[idx2, :]
@@ -1097,7 +1097,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
                 # Ambil indeks baris kernel
                 idx1 = idx1[0]
                 idx2 = idx2[0]
-                if float(DDphase_P_use.iloc[i]["delta_tt"])-(float(ttcal_P[idx1] - ttcal_P[idx2]))>r_time_P:
+                if abs(float(DDphase_P_use.iloc[i]["delta_tt"])-(float(ttcal_P[idx1] - ttcal_P[idx2])))>r_time_P:
                     continue
                 kernel1 = vp_kernel[idx1, :]
                 kernel2 = vp_kernel[idx2, :]
@@ -1136,7 +1136,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
                 # Ambil indeks baris kernel
                 idx1 = idx1[0]
                 idx2 = idx2[0]
-                if float(DDphase_S_use.iloc[i]["delta_tt"])-(float(ttcal_S[idx1] - ttcal_S[idx2]))>r_time_S:
+                if abs(float(DDphase_S_use.iloc[i]["delta_tt"])-(float(ttcal_S[idx1] - ttcal_S[idx2])))>r_time_S:
                     continue
                 kernel1 = vs_kernel[idx1, :]
                 kernel2 = vs_kernel[idx2, :]
