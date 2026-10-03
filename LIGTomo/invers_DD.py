@@ -501,6 +501,8 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         # Ambil indeks baris kernel
         idx1 = idx1[0]
         idx2 = idx2[0]
+        if float(DDphase_P_use.iloc[i]["delta_tt"])-(float(ttcal_P[idx1] - ttcal_P[idx2]))>r_time_P:
+            continue
         kernel1 = vp_kernel[idx1, :]
         kernel2 = vp_kernel[idx2, :]
         hypo_kernel1=hypo_kernel_P[idx1, :]
@@ -556,7 +558,8 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         # Ambil indeks baris kernel
         idx1 = idx1[0]
         idx2 = idx2[0]
-        
+        if float(DDphase_S_use.iloc[i]["delta_tt"])-(float(ttcal_S[idx1] - ttcal_S[idx2]))>r_time_S:
+            continue
         kernel1 = vs_kernel[idx1, :]
         kernel2 = vs_kernel[idx2, :]
         hypo_kernel1=hypo_kernel_S[idx1, :]
@@ -602,15 +605,15 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         logger.info('start iteration: ' + str(iter))
         weight = np.sqrt(vor_volumes(node))
         weight[weight == 0] = np.max(weight)
-        vp_kernel_zeros = scsp.csr_array((vs_kernel_inv.shape[0] + vs_kernel_DDinv.shape[0],vp_kernel_inv.shape[1]))
-        vs_kernel_zeros = scsp.csr_array((vp_kernel_inv.shape[0] + vp_kernel_DDinv.shape[0],vs_kernel_inv.shape[1]))
-        
+        vp_kernel_zeros = scsp.csr_array((vs_kernel.shape[0] + vs_kernel_DD.shape[0],vp_kernel.shape[1]))
+        vs_kernel_zeros = scsp.csr_array((vp_kernel.shape[0] + vp_kernel_DD.shape[0],vs_kernel.shape[1]))
+
         weight_inv = scsp.diags(1 / (weight[weight != 0]))
         smooth_damp=scsp.csr_array(smooth_matrix(node))*damping_2
         zeros_smooth=scsp.csr_array(smooth_damp.shape)
 
-        v_stack_P = scsp.vstack([vp_kernel_inv, vp_kernel_DDinv, vp_kernel_zeros, smooth_damp, zeros_smooth])
-        v_stack_S = scsp.vstack([vs_kernel_zeros, vs_kernel_inv, vs_kernel_DDinv, zeros_smooth, smooth_damp])
+        v_stack_P = scsp.vstack([vp_kernel, vp_kernel_DD, vp_kernel_zeros, smooth_damp, zeros_smooth])
+        v_stack_S = scsp.vstack([vs_kernel_zeros, vs_kernel, vs_kernel_DD, zeros_smooth, smooth_damp])
         inv_matrix_P = v_stack_P.dot(weight_inv)
         inv_matrix_S = v_stack_S.dot(weight_inv)
 
@@ -634,11 +637,11 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         inversion_result = lsmr(inv_matrix_hypo, t_res_inv, damp=damping_1)
 
         if len(hypo_list)!=0:
-            ds_P=inversion_result[0][hypo_kernel_P.shape[1]:hypo_kernel_P.shape[1]+vp_kernel_inv.shape[1]]*weight_inv.diagonal()
-            ds_S=inversion_result[0][hypo_kernel_P.shape[1]+vp_kernel_inv.shape[1]:]*weight_inv.diagonal()
+            ds_P=inversion_result[0][hypo_kernel_P.shape[1]:hypo_kernel_P.shape[1]+vp_kernel.shape[1]]*weight_inv.diagonal()
+            ds_S=inversion_result[0][hypo_kernel_P.shape[1]+vp_kernel.shape[1]:]*weight_inv.diagonal()
         else:
-            ds_P = inversion_result[0][:vp_kernel_inv.shape[1]]*weight_inv.diagonal()
-            ds_S = inversion_result[0][vp_kernel_inv.shape[1]:]*weight_inv.diagonal()
+            ds_P = inversion_result[0][:vp_kernel.shape[1]]*weight_inv.diagonal()
+            ds_S = inversion_result[0][vp_kernel.shape[1]:]*weight_inv.diagonal()
 
         #acond=inversion_result[6]
         print("CND: "+str(inversion_result[6]))
@@ -884,6 +887,8 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
             # Ambil indeks baris kernel
             idx1 = idx1[0]
             idx2 = idx2[0]
+            if float(DDphase_P_use.iloc[i]["delta_tt"])-(float(ttcal_P[idx1] - ttcal_P[idx2]))>r_time_P:
+                continue
             kernel1 = vp_kernel[idx1, :]
             kernel2 = vp_kernel[idx2, :]
             hypo_kernel1 = hypo_kernel_P[idx1, :]
@@ -939,6 +944,8 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
             # Ambil indeks baris kernel
             idx1 = idx1[0]
             idx2 = idx2[0]
+            if float(DDphase_S_use.iloc[i]["delta_tt"])-(float(ttcal_S[idx1] - ttcal_S[idx2]))>r_time_S:
+                continue
             kernel1 = vs_kernel[idx1, :]
             kernel2 = vs_kernel[idx2, :]
             hypo_kernel1 = hypo_kernel_S[idx1, :]
@@ -1090,6 +1097,8 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
                 # Ambil indeks baris kernel
                 idx1 = idx1[0]
                 idx2 = idx2[0]
+                if float(DDphase_P_use.iloc[i]["delta_tt"])-(float(ttcal_P[idx1] - ttcal_P[idx2]))>r_time_P:
+                    continue
                 kernel1 = vp_kernel[idx1, :]
                 kernel2 = vp_kernel[idx2, :]
                 kernel_DD_i = kernel1 - kernel2
@@ -1127,6 +1136,8 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
                 # Ambil indeks baris kernel
                 idx1 = idx1[0]
                 idx2 = idx2[0]
+                if float(DDphase_S_use.iloc[i]["delta_tt"])-(float(ttcal_S[idx1] - ttcal_S[idx2]))>r_time_S:
+                    continue
                 kernel1 = vs_kernel[idx1, :]
                 kernel2 = vs_kernel[idx2, :]
                 kernel_DD_i = kernel1 - kernel2
