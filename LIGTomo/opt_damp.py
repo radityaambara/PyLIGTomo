@@ -13,7 +13,7 @@ import os
 import matplotlib.pyplot as plt
 def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, damping_list, delt, deltn, xfac, iter1, iter2, tmin,
                  up_threshold, low_threshold, dens_thres, r_time_P, r_time_S,
-                 update_grid,folder_name,nu_cpu=os.cpu_count()-1):
+                 update_grid,folder_name,if_art=True, nu_cpu=os.cpu_count()-1):
     #load model parameter
     f_path='./'+folder_name
     if not os.path.exists(f_path):
@@ -84,8 +84,8 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
     gridVs = np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                        decimals=4).reshape(len(xnode),len(ynode),len(znode))
     #determine velgrid object
-    velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin)
-    velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin)
+    velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin, if_art)
+    velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin, if_art)
     vel_node_P=np.array(modvel.Vp)
     vel_node_S=np.array(modvel.Vs)
 
@@ -520,7 +520,7 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
             if (float(phase_listP_use.iloc[i,2])) <= 0:
                 continue
             phase_listP_use_dum.append(phase_listP_use.iloc[i, :])
-            ttobs_P.append(float(phase_listP_use.iloc[i,2]) - float(t_update.to_numpy().flatten()))
+            ttobs_P.append(float(phase_listP_use.iloc[i,2]) - float(t_update.iloc[0, 0]))
             path = np.vstack((source, receiver))
             paths_P.append(path)
             types_P.append(str((source_list_invers[source_list_invers['id'] == phase_listP_use.iloc[i, 0]]['type']).item()))
@@ -541,7 +541,7 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
             if (float(phase_listS_use.iloc[i,2])) <= 0:
                 continue
             phase_listS_use_dum.append(phase_listS_use.iloc[i, :])
-            ttobs_S.append(float(phase_listS_use.iloc[i,2]) - float(t_update.to_numpy().flatten()))
+            ttobs_S.append(float(phase_listS_use.iloc[i,2]) - float(t_update.iloc[0, 0]))
             path = np.vstack((source, receiver))
             paths_S.append(path)
             types_S.append(str((source_list_invers[source_list_invers['id'] == phase_listS_use.iloc[i, 0]]['type']).item()))
@@ -552,13 +552,13 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         interpP = RBFInterpolator(node_all, vel_allP, kernel='linear', neighbors=8)
         gridVp = np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                            decimals=4).reshape(len(xnode), len(ynode), len(znode))
-        velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin)
+        velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin, if_art)
 
         vel_allS = np.hstack((vel_node_S_akhir, modvel_outer.Vs))
         interpS = RBFInterpolator(node_all, vel_allS, kernel='linear', neighbors=8)
         gridVs = np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                            decimals=4).reshape(len(xnode), len(ynode), len(znode))
-        velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin)
+        velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin, if_art)
 
         print('start forward after iteration: ',iter)
         logger.info('start forward after iteration: '+str(iter))

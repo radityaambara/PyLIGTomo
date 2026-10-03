@@ -14,8 +14,8 @@ import logging
 import os
 
 
-def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, delt, deltn, xfac, iter1, iter2, tmin,
-                 iteration_number, up_threshold, low_threshold, dens_thres, d_rms, r_time_P, r_time_S, damping_1, damping_2,
+def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, dt_list, delt, deltn, xfac, iter1, iter2, tmin,
+                 iteration_number, up_threshold, low_threshold, dens_thres, d_rms, r_time_P, r_time_S, max_sep, damping_1, damping_2,
                update_grid,folder_name,if_art=True,update_grid_after=False,nu_cpu=os.cpu_count()-1):
     #load model parameter
     f_path='./'+folder_name
@@ -115,8 +115,10 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
     receiver_list[cols_to_convert] = receiver_list[cols_to_convert].apply(pd.to_numeric)
     phase_list.columns=['id_event','id_sta','t_time','phase']
     phase_list['t_time']=phase_list['t_time'].apply(pd.to_numeric)
-    phase_listP = phase_list[phase_list['phase']=='P']
-    phase_listS = phase_list[phase_list['phase']=='S']
+    phase_listP = phase_list[phase_list['phase']=='P'].reset_index(drop=True)
+    phase_listS = phase_list[phase_list['phase']=='S'].reset_index(drop=True)
+    DDphase_P = dt_list[dt_list["phase"] == "P"].reset_index(drop=True)
+    DDphase_S = dt_list[dt_list["phase"] == "S"].reset_index(drop=True)
     paths_P=[]
     ttobs_P=[]
     types_P=[]
@@ -150,7 +152,7 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
         ttobs_P.append(float(phase_listP.iloc[i,2]))
         types_P.append(str((source_list[source_list['id']==phase_listP.iloc[i,0]]['type']).item()))
 
-    phase_listP_use=pd.DataFrame(phase_listP_use)
+    phase_listP_use=pd.DataFrame(phase_listP_use).reset_index(drop=True)
 
 
     phase_listS_use=[]
@@ -167,7 +169,31 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
         ttobs_S.append(float(phase_listS.iloc[i,2]))
         types_S.append(str((source_list[source_list['id'] == phase_listS.iloc[i, 0]]['type']).item()))
 
-    phase_listS_use = pd.DataFrame(phase_listS_use)
+    phase_listS_use = pd.DataFrame(phase_listS_use).reset_index(drop=True)
+
+    DDphase_P_use=[]
+    for i in range(len(DDphase_P)):
+        row = DDphase_P.iloc[i, :]
+        source1 = row['ev1']
+        source2 = row['ev2']
+        receiver = row['id_sta']
+        if (source1 not in source_list['id'].values) or (source2 not in source_list['id'].values) or \
+                (receiver not in receiver_list['id'].values):
+            continue
+        DDphase_P_use.append(row)
+    DDphase_P_use=pd.DataFrame(DDphase_P_use).reset_index(drop=True)
+
+    DDphase_S_use=[]
+    for i in range(len(DDphase_S)):
+        row = DDphase_S.iloc[i, :]
+        source1 = row['ev1']
+        source2 = row['ev2']
+        receiver = row['id_sta']
+        if (source1 not in source_list['id'].values) or (source2 not in source_list['id'].values) or \
+                (receiver not in receiver_list['id'].values):
+            continue
+        DDphase_S_use.append(row)
+    DDphase_S_use=pd.DataFrame(DDphase_S_use).reset_index(drop=True)
 
     #start initial forward modeling
     print('start forward')
@@ -218,7 +244,7 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
             successful_row_idx += 1
 
     ttobs_P = copy(ttobsP_dum)
-    phase_listP_use = pd.DataFrame(phase_listP_use_dum)
+    phase_listP_use = pd.DataFrame(phase_listP_use_dum).reset_index(drop=True)
     vp_kernel = scsp.vstack(vp_kernel).tocsr()
     if len(hypo_list) != 0:
         hypo_kernel_P = scsp.csr_array((hypo_data, (hypo_rows, hypo_cols)),shape=(successful_row_idx, len(hypo_list) * 4))
@@ -270,7 +296,7 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
 
 
     ttobs_S = copy(ttobsS_dum)
-    phase_listS_use = pd.DataFrame(phase_listS_use_dum)
+    phase_listS_use = pd.DataFrame(phase_listS_use_dum).reset_index(drop=True)
     vs_kernel = scsp.vstack(vs_kernel).tocsr()
     if len(hypo_list) != 0:
         hypo_kernel_S = scsp.csr_array((hypo_data, (hypo_rows, hypo_cols)),shape=(successful_row_idx, len(hypo_list) * 4))
@@ -432,16 +458,129 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
     vp_kernel=vp_kernel[abs(t_res_P_awal)<r_time_P,:]
     if len(hypo_list)!=0:
         hypo_kernel_P=hypo_kernel_P[abs(t_res_P_awal)<r_time_P,:]
-    phase_listP_use=phase_listP_use.loc[phase_listP_use['t_res']<r_time_P]
+    phase_listP_use=phase_listP_use.loc[phase_listP_use['t_res']<r_time_P].reset_index(drop=True)
     t_res_P_awal=t_res_P_awal[abs(t_res_P_awal)<r_time_P]
 
     vs_kernel=vs_kernel[abs(t_res_S_awal)<r_time_S,:]
     if len(hypo_list)!=0:
         hypo_kernel_S=hypo_kernel_S[abs(t_res_S_awal)<r_time_S,:]
-    phase_listS_use=phase_listS_use.loc[phase_listS_use['t_res']<r_time_S]
+    phase_listS_use=phase_listS_use.loc[phase_listS_use['t_res']<r_time_S].reset_index(drop=True)
     t_res_S_awal=t_res_S_awal[abs(t_res_S_awal)<r_time_S]
 
-    t_res_awal=np.hstack((t_res_P_awal,t_res_S_awal))
+    vp_kernel_DD = []
+    hypo_kernel_P_DD = []
+    ttcal_DD_P = []
+    ttobs_DD_P = []
+    DDphase_P_use_dum = []
+    for i in range(len(DDphase_P_use)):
+        source1 = DDphase_P_use.iloc[i]["ev1"]
+        source2 = DDphase_P_use.iloc[i]["ev2"]
+        receiver = DDphase_P_use.iloc[i]["id_sta"]
+        # Cari indeks event1 dan stasiun pada phase_listP_use
+        idx1 = phase_listP_use.index[
+            (phase_listP_use.iloc[:, 0].astype(str) == str(source1)) &
+            (phase_listP_use.iloc[:, 1].astype(str) == str(receiver))
+            ].to_numpy()
+
+        # Cari indeks event2 dan stasiun pada phase_listP_use
+        idx2 = phase_listP_use.index[
+            (phase_listP_use.iloc[:, 0].astype(str) == str(source2)) &
+            (phase_listP_use.iloc[:, 1].astype(str) == str(receiver))
+            ].to_numpy()
+        if len(idx1) == 0 or len(idx2) == 0:
+            continue
+        
+        source1_data=source_list[source_list['id'].astype(str) == str(source1)]
+        source2_data=source_list[source_list['id'].astype(str) == str(source2)]
+        coord1 = np.array(source1_data[['easting','northing','depth']])
+        coord2 = np.array(source2_data[['easting','northing','depth']])
+        ev_dist= np.linalg.norm(coord1-coord2)
+        if ev_dist > max_sep:
+            continue
+
+        # Ambil indeks baris kernel
+        idx1 = idx1[0]
+        idx2 = idx2[0]
+        kernel1 = vp_kernel[idx1, :]
+        kernel2 = vp_kernel[idx2, :]
+        hypo_kernel1=hypo_kernel_P[idx1, :]
+        hypo_kernel2=hypo_kernel_P[idx2, :]
+        kernel_DD_i = kernel1 - kernel2
+        hypo_kernel_DD_i=hypo_kernel1 - hypo_kernel2
+        # Simpan kernel DD
+        vp_kernel_DD.append(kernel_DD_i)
+        hypo_kernel_P_DD.append(hypo_kernel_DD_i)
+        # Differential travel time kalkulasi
+        ttcal_DD_P.append(ttcal_P[idx1] - ttcal_P[idx2])
+        # Differential travel time observasi
+        ttobs_DD_P.append(float(DDphase_P_use.iloc[i]["delta_tt"]))
+        DDphase_P_use_dum.append(DDphase_P_use.iloc[i, :])
+
+    vp_kernel_DD = scsp.vstack(vp_kernel_DD).tocsr()
+    hypo_kernel_P_DD =scsp.vstack(hypo_kernel_P_DD).tocsr()
+    ttcal_DD_P=np.array(ttcal_DD_P)
+    ttobs_DD_P=np.array(ttobs_DD_P)
+    DDphase_P_use=pd.DataFrame(DDphase_P_use_dum).reset_index(drop=True)
+
+    vs_kernel_DD = []
+    hypo_kernel_S_DD = []
+    ttcal_DD_S = []
+    ttobs_DD_S = []
+    DDphase_S_use_dum = []
+    for i in range(len(DDphase_S_use)):
+        source1 = DDphase_S_use.iloc[i]["ev1"]
+        source2 = DDphase_S_use.iloc[i]["ev2"]
+        receiver = DDphase_S_use.iloc[i]["id_sta"]
+        # Cari indeks event1 dan stasiun pada phase_listS_use
+        idx1 = phase_listS_use.index[
+            (phase_listS_use.iloc[:, 0].astype(str) == str(source1)) &
+            (phase_listS_use.iloc[:, 1].astype(str) == str(receiver))
+            ].to_numpy()
+
+        # Cari indeks event2 dan stasiun pada phase_listS_use
+        idx2 = phase_listS_use.index[
+            (phase_listS_use.iloc[:, 0].astype(str) == str(source2)) &
+            (phase_listS_use.iloc[:, 1].astype(str) == str(receiver))
+            ].to_numpy()
+        if len(idx1) == 0 or len(idx2) == 0:
+            continue
+
+        source1_data=source_list[source_list['id'].astype(str) == str(source1)]
+        source2_data=source_list[source_list['id'].astype(str) == str(source2)]
+        coord1 = np.array(source1_data[['easting','northing','depth']])
+        coord2 = np.array(source2_data[['easting','northing','depth']])
+        ev_dist= np.linalg.norm(coord1-coord2)
+        if ev_dist > max_sep:
+            continue
+
+        # Ambil indeks baris kernel
+        idx1 = idx1[0]
+        idx2 = idx2[0]
+        
+        kernel1 = vs_kernel[idx1, :]
+        kernel2 = vs_kernel[idx2, :]
+        hypo_kernel1=hypo_kernel_S[idx1, :]
+        hypo_kernel2=hypo_kernel_S[idx2, :]
+        kernel_DD_i = kernel1 - kernel2
+        hypo_kernel_DD_i=hypo_kernel1 - hypo_kernel2
+        # Simpan kernel DD
+        vs_kernel_DD.append(kernel_DD_i)
+        hypo_kernel_S_DD.append(hypo_kernel_DD_i)
+        # Differential travel time kalkulasi
+        ttcal_DD_S.append(ttcal_S[idx1] - ttcal_S[idx2])
+        # Differential travel time observasi
+        ttobs_DD_S.append(float(DDphase_S_use.iloc[i]["delta_tt"]))
+        DDphase_S_use_dum.append(DDphase_S_use.iloc[i, :])
+
+    vs_kernel_DD = scsp.vstack(vs_kernel_DD).tocsr()
+    hypo_kernel_S_DD =scsp.vstack(hypo_kernel_S_DD).tocsr()
+    ttcal_DD_S=np.array(ttcal_DD_S)
+    ttobs_DD_S=np.array(ttobs_DD_S)
+    DDphase_S_use=pd.DataFrame(DDphase_S_use_dum).reset_index(drop=True)
+
+    t_resDD_P_awal=ttobs_DD_P-ttcal_DD_P
+    t_resDD_S_awal=ttobs_DD_S-ttcal_DD_S
+    t_res_awal=np.hstack((t_res_P_awal,t_resDD_P_awal,t_res_S_awal,t_resDD_S_awal))
     rms1 = np.sqrt(np.mean(t_res_awal ** 2))
     t_res=copy(t_res_awal)
 
@@ -463,23 +602,21 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
         logger.info('start iteration: ' + str(iter))
         weight = np.sqrt(vor_volumes(node))
         weight[weight == 0] = np.max(weight)
-        vp_kernel_inv = vp_kernel[:, weight != 0]
-        vs_kernel_inv = vs_kernel[:, weight != 0]
-        vp_kernel_zeros = scsp.csr_array((vs_kernel_inv.shape[0],vp_kernel_inv.shape[1]))
-        vs_kernel_zeros = scsp.csr_array((vp_kernel_inv.shape[0],vs_kernel_inv.shape[1]))
-
+        vp_kernel_zeros = scsp.csr_array((vs_kernel_inv.shape[0] + vs_kernel_DDinv.shape[0],vp_kernel_inv.shape[1]))
+        vs_kernel_zeros = scsp.csr_array((vp_kernel_inv.shape[0] + vp_kernel_DDinv.shape[0],vs_kernel_inv.shape[1]))
+        
         weight_inv = scsp.diags(1 / (weight[weight != 0]))
-        smooth_damp=scsp.csr_array(smooth_matrix(node[weight != 0,:]))*damping_2
+        smooth_damp=scsp.csr_array(smooth_matrix(node))*damping_2
         zeros_smooth=scsp.csr_array(smooth_damp.shape)
 
-        v_stack_P = scsp.vstack([vp_kernel_inv, vp_kernel_zeros, smooth_damp, zeros_smooth])
-        v_stack_S = scsp.vstack([vs_kernel_zeros, vs_kernel_inv, zeros_smooth, smooth_damp])
+        v_stack_P = scsp.vstack([vp_kernel_inv, vp_kernel_DDinv, vp_kernel_zeros, smooth_damp, zeros_smooth])
+        v_stack_S = scsp.vstack([vs_kernel_zeros, vs_kernel_inv, vs_kernel_DDinv, zeros_smooth, smooth_damp])
         inv_matrix_P = v_stack_P.dot(weight_inv)
         inv_matrix_S = v_stack_S.dot(weight_inv)
 
         if len(hypo_list)!=0:
             hypo_zero=scsp.csr_array((smooth_damp.shape[0]*2, hypo_kernel_P.shape[1]))
-            hypo_kernel_inv=scsp.vstack((hypo_kernel_P,hypo_kernel_S,hypo_zero))
+            hypo_kernel_inv=scsp.vstack((hypo_kernel_P,hypo_kernel_P_DD,hypo_kernel_S,hypo_kernel_S_DD,hypo_zero))
             inv_matrix_hypo = scsp.hstack((hypo_kernel_inv, inv_matrix_P, inv_matrix_S))
         else:
             inv_matrix_hypo=scsp.hstack((inv_matrix_P, inv_matrix_S))
@@ -559,7 +696,7 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
             paths_P.append(path)
             types_P.append(str((source_list_invers[source_list_invers['id'] == phase_listP_use.iloc[i, 0]]['type']).item()))
 
-        phase_listP_use = pd.DataFrame(phase_listP_use_dum)
+        phase_listP_use = pd.DataFrame(phase_listP_use_dum).reset_index(drop=True)
 
         paths_S= []
         ttobs_S = []
@@ -579,7 +716,7 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
             paths_S.append(path)
             types_S.append(str((source_list_invers[source_list_invers['id'] == phase_listS_use.iloc[i, 0]]['type']).item()))
 
-        phase_listS_use = pd.DataFrame(phase_listS_use_dum)
+        phase_listS_use = pd.DataFrame(phase_listS_use_dum).reset_index(drop=True)
 
         node_all = np.vstack((node, node_outer))
         vel_allP = np.hstack((vel_node_P, modvel_outer.Vp))
@@ -637,7 +774,7 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
                 successful_row_idx += 1
 
         ttobs_P=copy(ttobsP_dum)
-        phase_listP_use = pd.DataFrame(phase_listP_use_dum)
+        phase_listP_use = pd.DataFrame(phase_listP_use_dum).reset_index(drop=True)
         vp_kernel = scsp.vstack(vp_kernel).tocsr()
         if len(hypo_list) != 0:
             hypo_kernel_P = scsp.csr_array((hypo_data, (hypo_rows, hypo_cols)),shape=(successful_row_idx, len(hypo_list) * 4))
@@ -682,7 +819,7 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
 
 
         ttobs_S=copy(ttobsS_dum)
-        phase_listS_use = pd.DataFrame(phase_listS_use_dum)
+        phase_listS_use = pd.DataFrame(phase_listS_use_dum).reset_index(drop=True)
         vs_kernel = scsp.vstack(vs_kernel).tocsr()
         if len(hypo_list) != 0:
             hypo_kernel_S = scsp.csr_array((hypo_data, (hypo_rows, hypo_cols)),shape=(successful_row_idx, len(hypo_list) * 4))
@@ -703,18 +840,130 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
         vp_kernel = vp_kernel[abs(t_res_P) < r_time_P, :]
         if len(hypo_list)!=0:
             hypo_kernel_P = hypo_kernel_P[abs(t_res_P) < r_time_P, :]
-        phase_listP_use = phase_listP_use.loc[phase_listP_use['t_res'] < r_time_P]
+        phase_listP_use = phase_listP_use.loc[phase_listP_use['t_res'] < r_time_P].reset_index(drop=True)
         path_list_P=list(itertools.compress(path_list_P, abs(t_res_P) < r_time_P))
         t_res_P = t_res_P[abs(t_res_P) < r_time_P]
 
         vs_kernel = vs_kernel[abs(t_res_S) < r_time_S, :]
         if len(hypo_list)!=0:
             hypo_kernel_S = hypo_kernel_S[abs(t_res_S) < r_time_S, :]
-        phase_listS_use = phase_listS_use.loc[phase_listS_use['t_res'] < r_time_S]
+        phase_listS_use = phase_listS_use.loc[phase_listS_use['t_res'] < r_time_S].reset_index(drop=True)
         path_list_S = list(itertools.compress(path_list_S, abs(t_res_S) < r_time_S))
         t_res_S = t_res_S[abs(t_res_S) < r_time_S]
 
-        t_res = np.hstack((t_res_P, t_res_S))
+        vp_kernel_DD = []
+        hypo_kernel_P_DD = []
+        ttcal_DD_P = []
+        ttobs_DD_P = []
+        DDphase_P_use_dum = []
+        for i in range(len(DDphase_P_use)):
+            source1 = DDphase_P_use.iloc[i]["ev1"]
+            source2 = DDphase_P_use.iloc[i]["ev2"]
+            receiver = DDphase_P_use.iloc[i]["id_sta"]
+            # Cari indeks event1 dan stasiun pada phase_listP_use
+            idx1 = phase_listP_use.index[
+                (phase_listP_use.iloc[:, 0].astype(str) == str(source1)) &
+                (phase_listP_use.iloc[:, 1].astype(str) == str(receiver))
+                ].to_numpy()
+
+            # Cari indeks event2 dan stasiun pada phase_listP_use
+            idx2 = phase_listP_use.index[
+                (phase_listP_use.iloc[:, 0].astype(str) == str(source2)) &
+                (phase_listP_use.iloc[:, 1].astype(str) == str(receiver))
+                ].to_numpy()
+            if len(idx1) == 0 or len(idx2) == 0:
+                continue
+            
+            source1_data=source_list[source_list['id'].astype(str) == str(source1)]
+            source2_data=source_list[source_list['id'].astype(str) == str(source2)]
+            coord1 = np.array(source1_data[['easting','northing','depth']])
+            coord2 = np.array(source2_data[['easting','northing','depth']])
+            ev_dist= np.linalg.norm(coord1-coord2)
+            if ev_dist > max_sep:
+                continue
+            # Ambil indeks baris kernel
+            idx1 = idx1[0]
+            idx2 = idx2[0]
+            kernel1 = vp_kernel[idx1, :]
+            kernel2 = vp_kernel[idx2, :]
+            hypo_kernel1 = hypo_kernel_P[idx1, :]
+            hypo_kernel2 = hypo_kernel_P[idx2, :]
+            kernel_DD_i = kernel1 - kernel2
+            hypo_kernel_DD_i = hypo_kernel1 - hypo_kernel2
+            # Simpan kernel DD
+            vp_kernel_DD.append(kernel_DD_i)
+            hypo_kernel_P_DD.append(hypo_kernel_DD_i)
+            # Differential travel time kalkulasi
+            ttcal_DD_P.append(ttcal_P[idx1] - ttcal_P[idx2])
+            # Differential travel time observasi
+            ttobs_DD_P.append(float(DDphase_P_use.iloc[i]["delta_tt"]))
+            DDphase_P_use_dum.append(DDphase_P_use.iloc[i, :])
+
+        vp_kernel_DD = scsp.vstack(vp_kernel_DD).tocsr()
+        hypo_kernel_P_DD = scsp.vstack(hypo_kernel_P_DD).tocsr()
+        ttcal_DD_P = np.array(ttcal_DD_P)
+        ttobs_DD_P = np.array(ttobs_DD_P)
+        DDphase_P_use = pd.DataFrame(DDphase_P_use_dum).reset_index(drop=True)
+
+        vs_kernel_DD = []
+        hypo_kernel_S_DD = []
+        ttcal_DD_S = []
+        ttobs_DD_S = []
+        DDphase_S_use_dum = []
+        for i in range(len(DDphase_S_use)):
+            source1 = DDphase_S_use.iloc[i]["ev1"]
+            source2 = DDphase_S_use.iloc[i]["ev2"]
+            receiver = DDphase_S_use.iloc[i]["id_sta"]
+            # Cari indeks event1 dan stasiun pada phase_listS_use
+            idx1 = phase_listS_use.index[
+                (phase_listS_use.iloc[:, 0].astype(str) == str(source1)) &
+                (phase_listS_use.iloc[:, 1].astype(str) == str(receiver))
+                ].to_numpy()
+
+            # Cari indeks event2 dan stasiun pada phase_listS_use
+            idx2 = phase_listS_use.index[
+                (phase_listS_use.iloc[:, 0].astype(str) == str(source2)) &
+                (phase_listS_use.iloc[:, 1].astype(str) == str(receiver))
+                ].to_numpy()
+            if len(idx1) == 0 or len(idx2) == 0:
+                continue
+            
+            source1_data=source_list[source_list['id'].astype(str) == str(source1)]
+            source2_data=source_list[source_list['id'].astype(str) == str(source2)]
+            coord1 = np.array(source1_data[['easting','northing','depth']])
+            coord2 = np.array(source2_data[['easting','northing','depth']])
+            ev_dist= np.linalg.norm(coord1-coord2)
+            if ev_dist > max_sep:
+                continue
+
+            # Ambil indeks baris kernel
+            idx1 = idx1[0]
+            idx2 = idx2[0]
+            kernel1 = vs_kernel[idx1, :]
+            kernel2 = vs_kernel[idx2, :]
+            hypo_kernel1 = hypo_kernel_S[idx1, :]
+            hypo_kernel2 = hypo_kernel_S[idx2, :]
+            kernel_DD_i = kernel1 - kernel2
+            hypo_kernel_DD_i = hypo_kernel1 - hypo_kernel2
+            # Simpan kernel DD
+            vs_kernel_DD.append(kernel_DD_i)
+            hypo_kernel_S_DD.append(hypo_kernel_DD_i)
+            # Differential travel time kalkulasi
+            ttcal_DD_S.append(ttcal_S[idx1] - ttcal_S[idx2])
+            # Differential travel time observasi
+            ttobs_DD_S.append(float(DDphase_S_use.iloc[i]["delta_tt"]))
+            DDphase_S_use_dum.append(DDphase_S_use.iloc[i, :])
+
+        vs_kernel_DD = scsp.vstack(vs_kernel_DD).tocsr()
+        hypo_kernel_S_DD = scsp.vstack(hypo_kernel_S_DD).tocsr()
+        ttcal_DD_S = np.array(ttcal_DD_S)
+        ttobs_DD_S = np.array(ttobs_DD_S)
+        DDphase_S_use = pd.DataFrame(DDphase_S_use_dum).reset_index(drop=True)
+
+        t_resDD_P = ttobs_DD_P - ttcal_DD_P
+        t_resDD_S = ttobs_DD_S - ttcal_DD_S
+
+        t_res = np.hstack((t_res_P, t_resDD_P, t_res_S, t_resDD_S))
         rms2 = np.sqrt(np.mean(t_res ** 2))
 
         rms_list.append(rms2)
@@ -810,6 +1059,81 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
                 for i, result in enumerate(results):
                     vs_kernel.append(result)
             vs_kernel = scsp.vstack(vs_kernel).tocsr()
+
+            vp_kernel_DD = []
+            for i in range(len(DDphase_P_use)):
+                source1 = DDphase_P_use.iloc[i]["ev1"]
+                source2 = DDphase_P_use.iloc[i]["ev2"]
+                receiver = DDphase_P_use.iloc[i]["id_sta"]
+                # Cari indeks event1 dan stasiun pada phase_listP_use
+                idx1 = phase_listP_use.index[
+                    (phase_listP_use.iloc[:, 0].astype(str) == str(source1)) &
+                    (phase_listP_use.iloc[:, 1].astype(str) == str(receiver))
+                    ].to_numpy()
+
+                # Cari indeks event2 dan stasiun pada phase_listP_use
+                idx2 = phase_listP_use.index[
+                    (phase_listP_use.iloc[:, 0].astype(str) == str(source2)) &
+                    (phase_listP_use.iloc[:, 1].astype(str) == str(receiver))
+                    ].to_numpy()
+                if len(idx1) == 0 or len(idx2) == 0:
+                    continue
+
+                source1_data=source_list[source_list['id'].astype(str) == str(source1)]
+                source2_data=source_list[source_list['id'].astype(str) == str(source2)]
+                coord1 = np.array(source1_data[['easting','northing','depth']])
+                coord2 = np.array(source2_data[['easting','northing','depth']])
+                ev_dist= np.linalg.norm(coord1-coord2)
+                if ev_dist > max_sep:
+                    continue
+
+                # Ambil indeks baris kernel
+                idx1 = idx1[0]
+                idx2 = idx2[0]
+                kernel1 = vp_kernel[idx1, :]
+                kernel2 = vp_kernel[idx2, :]
+                kernel_DD_i = kernel1 - kernel2
+                vp_kernel_DD.append(kernel_DD_i)
+
+            vp_kernel_DD = scsp.vstack(vp_kernel_DD).tocsr()
+
+            vs_kernel_DD = []
+            for i in range(len(DDphase_S_use)):
+                source1 = DDphase_S_use.iloc[i]["ev1"]
+                source2 = DDphase_S_use.iloc[i]["ev2"]
+                receiver = DDphase_S_use.iloc[i]["id_sta"]
+                # Cari indeks event1 dan stasiun pada phase_listS_use
+                idx1 = phase_listS_use.index[
+                    (phase_listS_use.iloc[:, 0].astype(str) == str(source1)) &
+                    (phase_listS_use.iloc[:, 1].astype(str) == str(receiver))
+                    ].to_numpy()
+
+                # Cari indeks event2 dan stasiun pada phase_listS_use
+                idx2 = phase_listS_use.index[
+                    (phase_listS_use.iloc[:, 0].astype(str) == str(source2)) &
+                    (phase_listS_use.iloc[:, 1].astype(str) == str(receiver))
+                    ].to_numpy()
+                if len(idx1) == 0 or len(idx2) == 0:
+                    continue
+
+                source1_data=source_list[source_list['id'].astype(str) == str(source1)]
+                source2_data=source_list[source_list['id'].astype(str) == str(source2)]
+                coord1 = np.array(source1_data[['easting','northing','depth']])
+                coord2 = np.array(source2_data[['easting','northing','depth']])
+                ev_dist= np.linalg.norm(coord1-coord2)
+                if ev_dist > max_sep:
+                    continue
+
+                # Ambil indeks baris kernel
+                idx1 = idx1[0]
+                idx2 = idx2[0]
+                kernel1 = vs_kernel[idx1, :]
+                kernel2 = vs_kernel[idx2, :]
+                kernel_DD_i = kernel1 - kernel2
+                # Simpan kernel DD
+                vs_kernel_DD.append(kernel_DD_i)
+
+            vs_kernel_DD = scsp.vstack(vs_kernel_DD).tocsr()
 
 
     ax2=fig1.add_subplot(2,2,2)

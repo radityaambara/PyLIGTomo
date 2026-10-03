@@ -1,7 +1,6 @@
 from scipy.spatial import KDTree,Voronoi,ConvexHull, Delaunay
 import numpy as np
 import scipy.sparse as scsp
-import os
 import traceback
 
 """This is class for velocity grid:
@@ -25,7 +24,7 @@ class VelocityGrid:
     iter1 & iter2 = iteration number for psudo-bending
     tmin = error minimum for psudo-bending
     """
-    def __init__(self,node,xnode,ynode,znode,gridV,deltn,delt,xfac,iter1,iter2,tmin):
+    def __init__(self,node,xnode,ynode,znode,gridV,deltn,delt,xfac,iter1,iter2,tmin,if_art):
         self.node=node
         self.xnode=xnode
         self.ynode=ynode
@@ -40,6 +39,7 @@ class VelocityGrid:
         self.iter1=iter1
         self.iter2=iter2
         self.tmin=tmin
+        self.if_art=if_art
 
     def vel(self,x, y, z):
         ix = int((x - self.xmin) / self.deltn)
@@ -288,10 +288,11 @@ class VelocityGrid:
 
     """method for psudobending with ART initialization"""
     def psudobending(self,path):
-        diss = path[0] - path[-1]
-        npoints=int(np.linalg.norm(diss)/2*self.delt)
-        pathn = self.approximate_ray_tracing(path,npoints)
-        pathn = self.doublepath(pathn)
+        if self.if_art==True:
+            diss = path[0] - path[-1]
+            npoints=int(np.linalg.norm(diss)/2*self.delt)
+            path = self.approximate_ray_tracing(path,npoints)
+        pathn = self.doublepath(path)
         tt0 = self.tt(pathn)
         for i in range(0, self.iter1):
             for j in range(0, self.iter2):

@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="PyLIGTomo",
-    version="2.0",
+    version="3.0",
     packages=find_packages(),
     install_requires=["numpy",
                       "scipy",

@@ -5,6 +5,7 @@ LIGTomo/all_func.py
 LIGTomo/convert_vtk.py
 LIGTomo/forward.py
 LIGTomo/invers.py
+LIGTomo/invers_DD.py
 LIGTomo/invers_backup.py
 LIGTomo/opt_damp.py
 PyLIGTomo.egg-info/PKG-INFO

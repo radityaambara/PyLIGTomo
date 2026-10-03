@@ -10,7 +10,7 @@ import random
 import scipy.sparse as scsp
 
 def run_forward(modvel, modvel_outer, source_list, receiver_list, phase_list, delt, deltn, xfac, iter1, iter2,
-                tmin, folder_name, rnd_koef=1,nu_cpu=os.cpu_count()-1):
+                tmin, folder_name, rnd_koef=1, if_art=True, nu_cpu=os.cpu_count()-1):
     f_path='./'+folder_name
     if not os.path.exists(f_path):
         os.makedirs(f_path)
@@ -71,8 +71,8 @@ def run_forward(modvel, modvel_outer, source_list, receiver_list, phase_list, de
     gridVs = np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                        decimals=4).reshape(len(xnode),len(ynode),len(znode))
     #determine velgrid object
-    velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin)
-    velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin)
+    velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin, if_art)
+    velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin, if_art)
     vel_node_P=np.array(modvel.Vp)
     vel_node_S=np.array(modvel.Vs)
 
