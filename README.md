@@ -10,7 +10,7 @@ PyLIGTomo is a Python package for performing local earthquake tomography using a
 - Joint inversion of P-wave (Vp) and S-wave (Vs) travel times
 - Support for double-difference (DD) and absolute travel time inversions
 - Automatic node removal based on ray hit count (RHC) and density tensor criteria
-- Anisotropic velocity parametrization with configurable damping
+- Velocity parametrization with configurable damping
 - Parallel processing support using multiple CPU cores
 - VTK output for 3D visualization of velocity models and ray paths
 - Synthetic data generation (forward modeling) for testing and validation
