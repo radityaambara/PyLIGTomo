@@ -212,22 +212,4 @@ Both `run_forward` and `run_invers` generate the following output files in the s
 - `app.log`: Detailed inversion log
 - `compress.zip`: Compressed VTK outputs
 
-## Documentation
 
-For detailed documentation, see the [GitHub Wiki](https://github.com/radityaambara/PyLIGTomo/wiki).
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Author
-
-Raditya Ambara Putra (radityaambara@gmail.com)
-
-## References
-
-If you use PyLIGTomo in your research, please cite:
-
-```
-Ambara, R., 2021. PyLIGTomo: A Python package for local earthquake tomography using Voronoi-based grids. GitHub. https://github.com/radityaambara/PyLIGTomo
-```
