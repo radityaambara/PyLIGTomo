@@ -290,7 +290,7 @@ class VelocityGrid:
     def psudobending(self,path):
         if self.if_art==True:
             diss = path[0] - path[-1]
-            npoints=int(np.linalg.norm(diss)/2*self.delt)
+            npoints = max(3, int(np.ceil(np.linalg.norm(diss) / (2 * self.delt))) + 1)
             path = self.approximate_ray_tracing(path,npoints)
         pathn = self.doublepath(path)
         tt0 = self.tt(pathn)
