@@ -146,26 +146,26 @@ python test_suite.py
 
 ### Velocity Model (`modvel`)
 A pandas DataFrame with columns:
-- `X`: Node easting coordinate (meters)
-- `Y`: Node northing coordinate (meters)
-- `Z`: Node depth (meters)
+- `X`: Node easting coordinate (km)
+- `Y`: Node northing coordinate (km)
+- `Z`: Node depth (km)
 - `Vp`: P-wave velocity (km/s)
 - `Vs`: S-wave velocity (km/s)
 
 ### Source List (`source_list`)
 A pandas DataFrame with columns:
 - `id`: Event ID (integer)
-- `easting`: Event easting coordinate (meters)
-- `northing`: Event northing coordinate (meters)
-- `depth`: Event depth (meters)
+- `easting`: Event easting coordinate (km)
+- `northing`: Event northing coordinate (km)
+- `depth`: Event depth (km)
 - `type`: Event type (`'e'` for earthquake, `'b'` for blast)
 
 ### Receiver List (`receiver_list`)
 A pandas DataFrame with columns:
 - `id`: Station ID (integer)
-- `easting`: Station easting coordinate (meters)
-- `northing`: Station northing coordinate (meters)
-- `elevation`: Station elevation (meters)
+- `easting`: Station easting coordinate (km)
+- `northing`: Station northing coordinate (km)
+- `elevation`: Station elevation (km)
 
 ### Phase List (`phase_list`)
 A pandas DataFrame with columns:

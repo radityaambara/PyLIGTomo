@@ -15,7 +15,7 @@ import os
 
 
 def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, dt_list, delt, deltn, xfac, iter1, iter2, tmin,
-                 iteration_number, up_threshold, low_threshold, dens_thres, d_rms, r_time_P, r_time_S, max_sep, damping_1, damping_2,
+                 iteration_number, up_threshold, low_threshold, dens_thres, d_rms, r_time_P, r_time_S, max_sep, weightDD, damping_1, damping_2,
                update_grid,folder_name,if_art=True,update_grid_after=False,nu_cpu=os.cpu_count()-1):
     #load model parameter
     f_path='./'+folder_name
@@ -467,6 +467,8 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
     phase_listS_use=phase_listS_use.loc[phase_listS_use['t_res']<r_time_S].reset_index(drop=True)
     t_res_S_awal=t_res_S_awal[abs(t_res_S_awal)<r_time_S]
 
+    print('create DD kernel')
+    logger.info('create DD kernel')
     vp_kernel_DD = []
     hypo_kernel_P_DD = []
     ttcal_DD_P = []
@@ -583,7 +585,11 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
 
     t_resDD_P_awal=ttobs_DD_P-ttcal_DD_P
     t_resDD_S_awal=ttobs_DD_S-ttcal_DD_S
-    t_res_awal=np.hstack((t_res_P_awal,t_resDD_P_awal,t_res_S_awal,t_resDD_S_awal))
+
+    param_len=len(weightDD)
+    param_i=0
+    weightDD_i=weightDD[param_i]
+    t_res_awal=np.hstack((t_res_P_awal,t_resDD_P_awal*weightDD_i,t_res_S_awal,t_resDD_S_awal*weightDD_i))
     rms1 = np.sqrt(np.mean(t_res_awal ** 2))
     t_res=copy(t_res_awal)
 
@@ -599,6 +605,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
     print('initial rms:', rms1)
     logger.info('initial rms: ' + str(rms1))
 
+
     #mulai iterasi:
     for iter in range(0, iteration_number):
         print('start iteration:', iter)
@@ -612,14 +619,14 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         smooth_damp=scsp.csr_array(smooth_matrix(node))*damping_2
         zeros_smooth=scsp.csr_array(smooth_damp.shape)
 
-        v_stack_P = scsp.vstack([vp_kernel, vp_kernel_DD, vp_kernel_zeros, smooth_damp, zeros_smooth])
-        v_stack_S = scsp.vstack([vs_kernel_zeros, vs_kernel, vs_kernel_DD, zeros_smooth, smooth_damp])
+        v_stack_P = scsp.vstack([vp_kernel, vp_kernel_DD*weightDD_i, vp_kernel_zeros, smooth_damp, zeros_smooth])
+        v_stack_S = scsp.vstack([vs_kernel_zeros, vs_kernel, vs_kernel_DD*weightDD_i, zeros_smooth, smooth_damp])
         inv_matrix_P = v_stack_P.dot(weight_inv)
         inv_matrix_S = v_stack_S.dot(weight_inv)
 
         if len(hypo_list)!=0:
             hypo_zero=scsp.csr_array((smooth_damp.shape[0]*2, hypo_kernel_P.shape[1]))
-            hypo_kernel_inv=scsp.vstack((hypo_kernel_P,hypo_kernel_P_DD,hypo_kernel_S,hypo_kernel_S_DD,hypo_zero))
+            hypo_kernel_inv=scsp.vstack((hypo_kernel_P,hypo_kernel_P_DD*weightDD_i,hypo_kernel_S,hypo_kernel_S_DD*weightDD_i,hypo_zero))
             inv_matrix_hypo = scsp.hstack((hypo_kernel_inv, inv_matrix_P, inv_matrix_S))
         else:
             inv_matrix_hypo=scsp.hstack((inv_matrix_P, inv_matrix_S))
@@ -854,6 +861,8 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         path_list_S = list(itertools.compress(path_list_S, abs(t_res_S) < r_time_S))
         t_res_S = t_res_S[abs(t_res_S) < r_time_S]
 
+        print('create DD kernel')
+        logger.info('create DD kernel')
         vp_kernel_DD = []
         hypo_kernel_P_DD = []
         ttcal_DD_P = []
@@ -970,7 +979,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         t_resDD_P = ttobs_DD_P - ttcal_DD_P
         t_resDD_S = ttobs_DD_S - ttcal_DD_S
 
-        t_res = np.hstack((t_res_P, t_resDD_P, t_res_S, t_resDD_S))
+        t_res = np.hstack((t_res_P, t_resDD_P*weightDD_i, t_res_S, t_resDD_S*weightDD_i))
         rms2 = np.sqrt(np.mean(t_res ** 2))
 
         rms_list.append(rms2)
@@ -978,12 +987,20 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         logger.info('rms after iteration ' + str(iter) + ' : ' + str(rms2))
 
         if rms2>rms1 and iter>0:
-            break
+            param_i+=1
+            weightDD_i=weightDD[param_i]
+            if param_i==param_len-1:
+                break
+            t_res = np.hstack((t_res_P, t_resDD_P*weightDD_i, t_res_S, t_resDD_S*weightDD_i))
         if abs(rms2-rms1)<d_rms and iter>0:
-            break
+            param_i+=1
+            weightDD_i=weightDD[param_i]
+            if param_i==param_len-1:
+                break
+            t_res = np.hstack((t_res_P, t_resDD_P*weightDD_i, t_res_S, t_resDD_S*weightDD_i))
         if iter == iteration_number-1:
             break
-        rms1 = np.copy(rms2)
+        rms1 = np.sqrt(np.mean(t_res ** 2))
 
         print('start adding node')
         logger.info('start adding node')
