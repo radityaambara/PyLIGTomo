@@ -590,7 +590,8 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
     param_i=0
     weightDD_i=weightDD[param_i]
     t_res_awal=np.hstack((t_res_P_awal,t_resDD_P_awal*weightDD_i,t_res_S_awal,t_resDD_S_awal*weightDD_i))
-    rms1 = np.sqrt(np.mean(t_res_awal ** 2))
+    t_res_awal_noweight=np.hstack((t_res_P_awal,t_resDD_P_awal,t_res_S_awal,t_resDD_S_awal))
+    rms1 = np.sqrt(np.mean(t_res_awal_noweight ** 2))
     t_res=copy(t_res_awal)
 
     fig1=plt.figure(figsize=[9.5,10])
@@ -1000,7 +1001,8 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
             t_res = np.hstack((t_res_P, t_resDD_P*weightDD_i, t_res_S, t_resDD_S*weightDD_i))
         if iter == iteration_number-1:
             break
-        rms1 = np.sqrt(np.mean(t_res ** 2))
+        t_res_noweight = np.hstack((t_res_P, t_resDD_P, t_res_S, t_resDD_S))
+        rms1 = np.sqrt(np.mean(t_res_noweight ** 2))
 
         print('start adding node')
         logger.info('start adding node')
