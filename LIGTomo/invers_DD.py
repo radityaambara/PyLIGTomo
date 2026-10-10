@@ -596,7 +596,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
 
     fig1=plt.figure(figsize=[9.5,10])
     ax1=fig1.add_subplot(2,2,1)
-    n1, _, _ =ax1.hist(t_res_awal,bins=30)
+    n1, _, _ =ax1.hist(t_res_awal_noweight,bins=30)
     ax1.set_xlabel('Residual (s)')
     ax1.set_ylabel('Count')
     ax1.title.set_text('Initial (before inversion)')
