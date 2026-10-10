@@ -981,7 +981,8 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         t_resDD_S = ttobs_DD_S - ttcal_DD_S
 
         t_res = np.hstack((t_res_P, t_resDD_P*weightDD_i, t_res_S, t_resDD_S*weightDD_i))
-        rms2 = np.sqrt(np.mean(t_res ** 2))
+        t_res_noweight = np.hstack((t_res_P, t_resDD_P, t_res_S, t_resDD_S))
+        rms2 = np.sqrt(np.mean(t_res_noweight ** 2))
 
         rms_list.append(rms2)
         print('rms after iteration ', iter, ' :', rms2)
@@ -1167,7 +1168,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
 
 
     ax2=fig1.add_subplot(2,2,2)
-    n2, _, _ =ax2.hist(t_res,bins=30)
+    n2, _, _ =ax2.hist(t_res_noweight,bins=30)
     max_ylim = max(max(n1), max(n2)) * 1.1
     ax1.set_ylim(ymin=0,ymax=max_ylim)
     ax2.set_ylim(ymin=0,ymax=max_ylim)
