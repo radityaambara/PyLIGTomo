@@ -130,11 +130,11 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
     #source_list_invers['to_update']=0
     #source_list_invers['to_update_i']=0
     hypo_list=source_list[source_list['type']=='e']
-    hypo_list['to_update']=0
-    hypo_list['to_update_i']=0
+    hypo_list['to_update']=0.0
+    hypo_list['to_update_i']=0.0
     blast_list=source_list[source_list['type']=='b']
-    blast_list['to_update']=0
-    blast_list['to_update_i']=0
+    blast_list['to_update']=0.0
+    blast_list['to_update_i']=0.0
 
     #filter phase data (menghilangkan data yang diluar treshold)
     phase_listP_use=[]
