@@ -994,15 +994,15 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
 
         if rms2>rms1 and iter>0:
             param_i+=1
-            weightDD_i=weightDD[param_i]
             if param_i==param_len:
                 break
+            weightDD_i=weightDD[param_i]
             t_res = np.hstack((t_res_P, t_resDD_P*weightDD_i, t_res_S, t_resDD_S*weightDD_i))
         elif abs(rms2-rms1)<d_rms and iter>0:
             param_i+=1
-            weightDD_i=weightDD[param_i]
             if param_i==param_len:
                 break
+            weightDD_i=weightDD[param_i]
             t_res = np.hstack((t_res_P, t_resDD_P*weightDD_i, t_res_S, t_resDD_S*weightDD_i))
         elif iter == iteration_number-1:
             break
