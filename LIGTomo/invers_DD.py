@@ -471,119 +471,88 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
 
     print('create DD kernel')
     logger.info('create DD kernel')
-    vp_kernel_DD = []
-    hypo_kernel_P_DD = []
-    ttcal_DD_P = []
-    ttobs_DD_P = []
-    DDphase_P_use_dum = []
-    for i in range(len(DDphase_P_use)):
-        source1 = DDphase_P_use.iloc[i]["ev1"]
-        source2 = DDphase_P_use.iloc[i]["ev2"]
-        receiver = DDphase_P_use.iloc[i]["id_sta"]
-        # Cari indeks event1 dan stasiun pada phase_listP_use
-        idx1 = phase_listP_use.index[
-            (phase_listP_use.iloc[:, 0].astype(str) == str(source1)) &
-            (phase_listP_use.iloc[:, 1].astype(str) == str(receiver))
-            ].to_numpy()
 
-        # Cari indeks event2 dan stasiun pada phase_listP_use
-        idx2 = phase_listP_use.index[
-            (phase_listP_use.iloc[:, 0].astype(str) == str(source2)) &
-            (phase_listP_use.iloc[:, 1].astype(str) == str(receiver))
-            ].to_numpy()
-        if len(idx1) == 0 or len(idx2) == 0:
-            continue
-        
-        source1_data=source_list[source_list['id'].astype(str) == str(source1)]
-        source2_data=source_list[source_list['id'].astype(str) == str(source2)]
-        coord1 = np.array(source1_data[['easting','northing','depth']])
-        coord2 = np.array(source2_data[['easting','northing','depth']])
-        ev_dist= np.linalg.norm(coord1-coord2)
-        if ev_dist > max_sep:
-            continue
+    phase_keys = pd.MultiIndex.from_arrays([phase_listP_use.iloc[:, 0].astype(str),phase_listP_use.iloc[:, 1].astype(str)])
+    first = ~phase_keys.duplicated(keep="first")
+    phase_lookup = pd.Series(np.arange(len(phase_listP_use))[first],index=phase_keys[first])
 
-        # Ambil indeks baris kernel
-        idx1 = idx1[0]
-        idx2 = idx2[0]
-        if abs(float(DDphase_P_use.iloc[i]["delta_tt"])-(float(ttcal_P[idx1] - ttcal_P[idx2])))>r_time_P:
-            continue
-        kernel1 = vp_kernel[idx1, :]
-        kernel2 = vp_kernel[idx2, :]
-        hypo_kernel1=hypo_kernel_P[idx1, :]
-        hypo_kernel2=hypo_kernel_P[idx2, :]
-        kernel_DD_i = kernel1 - kernel2
-        hypo_kernel_DD_i=hypo_kernel1 - hypo_kernel2
-        # Simpan kernel DD
-        vp_kernel_DD.append(kernel_DD_i)
-        hypo_kernel_P_DD.append(hypo_kernel_DD_i)
-        # Differential travel time kalkulasi
-        ttcal_DD_P.append(ttcal_P[idx1] - ttcal_P[idx2])
-        # Differential travel time observasi
-        ttobs_DD_P.append(float(DDphase_P_use.iloc[i]["delta_tt"]))
-        DDphase_P_use_dum.append(DDphase_P_use.iloc[i, :])
+    ev1 = DDphase_P_use["ev1"].astype(str)
+    ev2 = DDphase_P_use["ev2"].astype(str)
+    sta = DDphase_P_use["id_sta"].astype(str)
 
-    vp_kernel_DD = scsp.vstack(vp_kernel_DD).tocsr()
-    hypo_kernel_P_DD =scsp.vstack(hypo_kernel_P_DD).tocsr()
-    ttcal_DD_P=np.array(ttcal_DD_P)
-    ttobs_DD_P=np.array(ttobs_DD_P)
-    DDphase_P_use=pd.DataFrame(DDphase_P_use_dum).reset_index(drop=True)
+    keys1 = pd.MultiIndex.from_arrays([ev1, sta])
+    keys2 = pd.MultiIndex.from_arrays([ev2, sta])
 
-    vs_kernel_DD = []
-    hypo_kernel_S_DD = []
-    ttcal_DD_S = []
-    ttobs_DD_S = []
-    DDphase_S_use_dum = []
-    for i in range(len(DDphase_S_use)):
-        source1 = DDphase_S_use.iloc[i]["ev1"]
-        source2 = DDphase_S_use.iloc[i]["ev2"]
-        receiver = DDphase_S_use.iloc[i]["id_sta"]
-        # Cari indeks event1 dan stasiun pada phase_listS_use
-        idx1 = phase_listS_use.index[
-            (phase_listS_use.iloc[:, 0].astype(str) == str(source1)) &
-            (phase_listS_use.iloc[:, 1].astype(str) == str(receiver))
-            ].to_numpy()
+    idx1_all = phase_lookup.reindex(keys1).to_numpy()
+    idx2_all = phase_lookup.reindex(keys2).to_numpy()
 
-        # Cari indeks event2 dan stasiun pada phase_listS_use
-        idx2 = phase_listS_use.index[
-            (phase_listS_use.iloc[:, 0].astype(str) == str(source2)) &
-            (phase_listS_use.iloc[:, 1].astype(str) == str(receiver))
-            ].to_numpy()
-        if len(idx1) == 0 or len(idx2) == 0:
-            continue
+    source_coords = source_list[["id", "easting", "northing", "depth"]].copy()
+    source_coords["id"] = source_coords["id"].astype(str)
+    source_coords = (source_coords.drop_duplicates(subset="id", keep="first").set_index("id"))
+    coord1 = source_coords.reindex(ev1)[["easting", "northing", "depth"]].to_numpy(dtype=float)
+    coord2 = source_coords.reindex(ev2)[["easting", "northing", "depth"]].to_numpy(dtype=float)
+    ev_dist = np.linalg.norm(coord1 - coord2, axis=1)
+    dt_obs_all = pd.to_numeric(DDphase_P_use["delta_tt"], errors="coerce").to_numpy(dtype=float)
 
-        source1_data=source_list[source_list['id'].astype(str) == str(source1)]
-        source2_data=source_list[source_list['id'].astype(str) == str(source2)]
-        coord1 = np.array(source1_data[['easting','northing','depth']])
-        coord2 = np.array(source2_data[['easting','northing','depth']])
-        ev_dist= np.linalg.norm(coord1-coord2)
-        if ev_dist > max_sep:
-            continue
+    valid = (np.isfinite(idx1_all)& np.isfinite(idx2_all)& np.isfinite(ev_dist)& (ev_dist <= max_sep)& np.isfinite(dt_obs_all))
+    selected = np.flatnonzero(valid)
+    idx1 = idx1_all[selected].astype(np.int64)
+    idx2 = idx2_all[selected].astype(np.int64)
+    ttcal = np.asarray(ttcal_P, dtype=float).ravel()
+    dt_cal = ttcal[idx1] - ttcal[idx2]
+    dt_obs = dt_obs_all[selected]
+    valid_residual = (np.isfinite(dt_cal)& (np.abs(dt_obs - dt_cal) <= r_time_P))
+    selected = selected[valid_residual]
+    idx1 = idx1[valid_residual]
+    idx2 = idx2[valid_residual]
 
-        # Ambil indeks baris kernel
-        idx1 = idx1[0]
-        idx2 = idx2[0]
-        if abs(float(DDphase_S_use.iloc[i]["delta_tt"])-(float(ttcal_S[idx1] - ttcal_S[idx2])))>r_time_S:
-            continue
-        kernel1 = vs_kernel[idx1, :]
-        kernel2 = vs_kernel[idx2, :]
-        hypo_kernel1=hypo_kernel_S[idx1, :]
-        hypo_kernel2=hypo_kernel_S[idx2, :]
-        kernel_DD_i = kernel1 - kernel2
-        hypo_kernel_DD_i=hypo_kernel1 - hypo_kernel2
-        # Simpan kernel DD
-        vs_kernel_DD.append(kernel_DD_i)
-        hypo_kernel_S_DD.append(hypo_kernel_DD_i)
-        # Differential travel time kalkulasi
-        ttcal_DD_S.append(ttcal_S[idx1] - ttcal_S[idx2])
-        # Differential travel time observasi
-        ttobs_DD_S.append(float(DDphase_S_use.iloc[i]["delta_tt"]))
-        DDphase_S_use_dum.append(DDphase_S_use.iloc[i, :])
+    vp_kernel_DD = (vp_kernel[idx1, :] - vp_kernel[idx2, :]).tocsr()
+    hypo_kernel_P_DD = (hypo_kernel_P[idx1, :] - hypo_kernel_P[idx2, :]).tocsr()
 
-    vs_kernel_DD = scsp.vstack(vs_kernel_DD).tocsr()
-    hypo_kernel_S_DD =scsp.vstack(hypo_kernel_S_DD).tocsr()
-    ttcal_DD_S=np.array(ttcal_DD_S)
-    ttobs_DD_S=np.array(ttobs_DD_S)
-    DDphase_S_use=pd.DataFrame(DDphase_S_use_dum).reset_index(drop=True)
+    ttcal_DD_P = ttcal[idx1] - ttcal[idx2]
+    ttobs_DD_P = dt_obs_all[selected]
+    DDphase_P_use = (DDphase_P_use.iloc[selected].reset_index(drop=True))
+
+    phase_keys = pd.MultiIndex.from_arrays([phase_listS_use.iloc[:, 0].astype(str),phase_listS_use.iloc[:, 1].astype(str)])
+    first = ~phase_keys.duplicated(keep="first")
+    phase_lookup = pd.Series(np.arange(len(phase_listS_use))[first],index=phase_keys[first])
+
+    ev1 = DDphase_S_use["ev1"].astype(str)
+    ev2 = DDphase_S_use["ev2"].astype(str)
+    sta = DDphase_S_use["id_sta"].astype(str)
+
+    keys1 = pd.MultiIndex.from_arrays([ev1, sta])
+    keys2 = pd.MultiIndex.from_arrays([ev2, sta])
+
+    idx1_all = phase_lookup.reindex(keys1).to_numpy()
+    idx2_all = phase_lookup.reindex(keys2).to_numpy()
+
+    source_coords = source_list[["id", "easting", "northing", "depth"]].copy()
+    source_coords["id"] = source_coords["id"].astype(str)
+    source_coords = (source_coords.drop_duplicates(subset="id", keep="first").set_index("id"))
+    coord1 = source_coords.reindex(ev1)[["easting", "northing", "depth"]].to_numpy(dtype=float)
+    coord2 = source_coords.reindex(ev2)[["easting", "northing", "depth"]].to_numpy(dtype=float)
+    ev_dist = np.linalg.norm(coord1 - coord2, axis=1)
+    dt_obs_all = pd.to_numeric(DDphase_S_use["delta_tt"], errors="coerce").to_numpy(dtype=float)
+
+    valid = (np.isfinite(idx1_all)& np.isfinite(idx2_all)& np.isfinite(ev_dist)& (ev_dist <= max_sep)& np.isfinite(dt_obs_all))
+    selected = np.flatnonzero(valid)
+    idx1 = idx1_all[selected].astype(np.int64)
+    idx2 = idx2_all[selected].astype(np.int64)
+    ttcal = np.asarray(ttcal_S, dtype=float).ravel()
+    dt_cal = ttcal[idx1] - ttcal[idx2]
+    dt_obs = dt_obs_all[selected]
+    valid_residual = (np.isfinite(dt_cal)& (np.abs(dt_obs - dt_cal) <= r_time_S))
+    selected = selected[valid_residual]
+    idx1 = idx1[valid_residual]
+    idx2 = idx2[valid_residual]
+
+    vs_kernel_DD = (vs_kernel[idx1, :] - vs_kernel[idx2, :]).tocsr()
+    hypo_kernel_S_DD = (hypo_kernel_S[idx1, :] - hypo_kernel_S[idx2, :]).tocsr()
+
+    ttcal_DD_S = ttcal[idx1] - ttcal[idx2]
+    ttobs_DD_S = dt_obs_all[selected]
+    DDphase_S_use = (DDphase_S_use.iloc[selected].reset_index(drop=True))
 
     t_resDD_P_awal=ttobs_DD_P-ttcal_DD_P
     t_resDD_S_awal=ttobs_DD_S-ttcal_DD_S
@@ -868,118 +837,87 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
 
         print('create DD kernel')
         logger.info('create DD kernel')
-        vp_kernel_DD = []
-        hypo_kernel_P_DD = []
-        ttcal_DD_P = []
-        ttobs_DD_P = []
-        DDphase_P_use_dum = []
-        for i in range(len(DDphase_P_use)):
-            source1 = DDphase_P_use.iloc[i]["ev1"]
-            source2 = DDphase_P_use.iloc[i]["ev2"]
-            receiver = DDphase_P_use.iloc[i]["id_sta"]
-            # Cari indeks event1 dan stasiun pada phase_listP_use
-            idx1 = phase_listP_use.index[
-                (phase_listP_use.iloc[:, 0].astype(str) == str(source1)) &
-                (phase_listP_use.iloc[:, 1].astype(str) == str(receiver))
-                ].to_numpy()
+        phase_keys = pd.MultiIndex.from_arrays([phase_listP_use.iloc[:, 0].astype(str),phase_listP_use.iloc[:, 1].astype(str)])
+        first = ~phase_keys.duplicated(keep="first")
+        phase_lookup = pd.Series(np.arange(len(phase_listP_use))[first],index=phase_keys[first])
 
-            # Cari indeks event2 dan stasiun pada phase_listP_use
-            idx2 = phase_listP_use.index[
-                (phase_listP_use.iloc[:, 0].astype(str) == str(source2)) &
-                (phase_listP_use.iloc[:, 1].astype(str) == str(receiver))
-                ].to_numpy()
-            if len(idx1) == 0 or len(idx2) == 0:
-                continue
-            
-            source1_data=source_list[source_list['id'].astype(str) == str(source1)]
-            source2_data=source_list[source_list['id'].astype(str) == str(source2)]
-            coord1 = np.array(source1_data[['easting','northing','depth']])
-            coord2 = np.array(source2_data[['easting','northing','depth']])
-            ev_dist= np.linalg.norm(coord1-coord2)
-            if ev_dist > max_sep:
-                continue
-            # Ambil indeks baris kernel
-            idx1 = idx1[0]
-            idx2 = idx2[0]
-            if abs(float(DDphase_P_use.iloc[i]["delta_tt"])-(float(ttcal_P[idx1] - ttcal_P[idx2])))>r_time_P:
-                continue
-            kernel1 = vp_kernel[idx1, :]
-            kernel2 = vp_kernel[idx2, :]
-            hypo_kernel1 = hypo_kernel_P[idx1, :]
-            hypo_kernel2 = hypo_kernel_P[idx2, :]
-            kernel_DD_i = kernel1 - kernel2
-            hypo_kernel_DD_i = hypo_kernel1 - hypo_kernel2
-            # Simpan kernel DD
-            vp_kernel_DD.append(kernel_DD_i)
-            hypo_kernel_P_DD.append(hypo_kernel_DD_i)
-            # Differential travel time kalkulasi
-            ttcal_DD_P.append(ttcal_P[idx1] - ttcal_P[idx2])
-            # Differential travel time observasi
-            ttobs_DD_P.append(float(DDphase_P_use.iloc[i]["delta_tt"]))
-            DDphase_P_use_dum.append(DDphase_P_use.iloc[i, :])
+        ev1 = DDphase_P_use["ev1"].astype(str)
+        ev2 = DDphase_P_use["ev2"].astype(str)
+        sta = DDphase_P_use["id_sta"].astype(str)
 
-        vp_kernel_DD = scsp.vstack(vp_kernel_DD).tocsr()
-        hypo_kernel_P_DD = scsp.vstack(hypo_kernel_P_DD).tocsr()
-        ttcal_DD_P = np.array(ttcal_DD_P)
-        ttobs_DD_P = np.array(ttobs_DD_P)
-        DDphase_P_use = pd.DataFrame(DDphase_P_use_dum).reset_index(drop=True)
+        keys1 = pd.MultiIndex.from_arrays([ev1, sta])
+        keys2 = pd.MultiIndex.from_arrays([ev2, sta])
 
-        vs_kernel_DD = []
-        hypo_kernel_S_DD = []
-        ttcal_DD_S = []
-        ttobs_DD_S = []
-        DDphase_S_use_dum = []
-        for i in range(len(DDphase_S_use)):
-            source1 = DDphase_S_use.iloc[i]["ev1"]
-            source2 = DDphase_S_use.iloc[i]["ev2"]
-            receiver = DDphase_S_use.iloc[i]["id_sta"]
-            # Cari indeks event1 dan stasiun pada phase_listS_use
-            idx1 = phase_listS_use.index[
-                (phase_listS_use.iloc[:, 0].astype(str) == str(source1)) &
-                (phase_listS_use.iloc[:, 1].astype(str) == str(receiver))
-                ].to_numpy()
+        idx1_all = phase_lookup.reindex(keys1).to_numpy()
+        idx2_all = phase_lookup.reindex(keys2).to_numpy()
 
-            # Cari indeks event2 dan stasiun pada phase_listS_use
-            idx2 = phase_listS_use.index[
-                (phase_listS_use.iloc[:, 0].astype(str) == str(source2)) &
-                (phase_listS_use.iloc[:, 1].astype(str) == str(receiver))
-                ].to_numpy()
-            if len(idx1) == 0 or len(idx2) == 0:
-                continue
-            
-            source1_data=source_list[source_list['id'].astype(str) == str(source1)]
-            source2_data=source_list[source_list['id'].astype(str) == str(source2)]
-            coord1 = np.array(source1_data[['easting','northing','depth']])
-            coord2 = np.array(source2_data[['easting','northing','depth']])
-            ev_dist= np.linalg.norm(coord1-coord2)
-            if ev_dist > max_sep:
-                continue
+        source_coords = source_list[["id", "easting", "northing", "depth"]].copy()
+        source_coords["id"] = source_coords["id"].astype(str)
+        source_coords = (source_coords.drop_duplicates(subset="id", keep="first").set_index("id"))
+        coord1 = source_coords.reindex(ev1)[["easting", "northing", "depth"]].to_numpy(dtype=float)
+        coord2 = source_coords.reindex(ev2)[["easting", "northing", "depth"]].to_numpy(dtype=float)
+        ev_dist = np.linalg.norm(coord1 - coord2, axis=1)
+        dt_obs_all = pd.to_numeric(DDphase_P_use["delta_tt"], errors="coerce").to_numpy(dtype=float)
 
-            # Ambil indeks baris kernel
-            idx1 = idx1[0]
-            idx2 = idx2[0]
-            if abs(float(DDphase_S_use.iloc[i]["delta_tt"])-(float(ttcal_S[idx1] - ttcal_S[idx2])))>r_time_S:
-                continue
-            kernel1 = vs_kernel[idx1, :]
-            kernel2 = vs_kernel[idx2, :]
-            hypo_kernel1 = hypo_kernel_S[idx1, :]
-            hypo_kernel2 = hypo_kernel_S[idx2, :]
-            kernel_DD_i = kernel1 - kernel2
-            hypo_kernel_DD_i = hypo_kernel1 - hypo_kernel2
-            # Simpan kernel DD
-            vs_kernel_DD.append(kernel_DD_i)
-            hypo_kernel_S_DD.append(hypo_kernel_DD_i)
-            # Differential travel time kalkulasi
-            ttcal_DD_S.append(ttcal_S[idx1] - ttcal_S[idx2])
-            # Differential travel time observasi
-            ttobs_DD_S.append(float(DDphase_S_use.iloc[i]["delta_tt"]))
-            DDphase_S_use_dum.append(DDphase_S_use.iloc[i, :])
+        valid = (np.isfinite(idx1_all)& np.isfinite(idx2_all)& np.isfinite(ev_dist)& (ev_dist <= max_sep)& np.isfinite(dt_obs_all))
+        selected = np.flatnonzero(valid)
+        idx1 = idx1_all[selected].astype(np.int64)
+        idx2 = idx2_all[selected].astype(np.int64)
+        ttcal = np.asarray(ttcal_P, dtype=float).ravel()
+        dt_cal = ttcal[idx1] - ttcal[idx2]
+        dt_obs = dt_obs_all[selected]
+        valid_residual = (np.isfinite(dt_cal)& (np.abs(dt_obs - dt_cal) <= r_time_P))
+        selected = selected[valid_residual]
+        idx1 = idx1[valid_residual]
+        idx2 = idx2[valid_residual]
 
-        vs_kernel_DD = scsp.vstack(vs_kernel_DD).tocsr()
-        hypo_kernel_S_DD = scsp.vstack(hypo_kernel_S_DD).tocsr()
-        ttcal_DD_S = np.array(ttcal_DD_S)
-        ttobs_DD_S = np.array(ttobs_DD_S)
-        DDphase_S_use = pd.DataFrame(DDphase_S_use_dum).reset_index(drop=True)
+        vp_kernel_DD = (vp_kernel[idx1, :] - vp_kernel[idx2, :]).tocsr()
+        hypo_kernel_P_DD = (hypo_kernel_P[idx1, :] - hypo_kernel_P[idx2, :]).tocsr()
+
+        ttcal_DD_P = ttcal[idx1] - ttcal[idx2]
+        ttobs_DD_P = dt_obs_all[selected]
+        DDphase_P_use = (DDphase_P_use.iloc[selected].reset_index(drop=True))
+
+        phase_keys = pd.MultiIndex.from_arrays([phase_listS_use.iloc[:, 0].astype(str),phase_listS_use.iloc[:, 1].astype(str)])
+        first = ~phase_keys.duplicated(keep="first")
+        phase_lookup = pd.Series(np.arange(len(phase_listS_use))[first],index=phase_keys[first])
+
+        ev1 = DDphase_S_use["ev1"].astype(str)
+        ev2 = DDphase_S_use["ev2"].astype(str)
+        sta = DDphase_S_use["id_sta"].astype(str)
+
+        keys1 = pd.MultiIndex.from_arrays([ev1, sta])
+        keys2 = pd.MultiIndex.from_arrays([ev2, sta])
+
+        idx1_all = phase_lookup.reindex(keys1).to_numpy()
+        idx2_all = phase_lookup.reindex(keys2).to_numpy()
+
+        source_coords = source_list[["id", "easting", "northing", "depth"]].copy()
+        source_coords["id"] = source_coords["id"].astype(str)
+        source_coords = (source_coords.drop_duplicates(subset="id", keep="first").set_index("id"))
+        coord1 = source_coords.reindex(ev1)[["easting", "northing", "depth"]].to_numpy(dtype=float)
+        coord2 = source_coords.reindex(ev2)[["easting", "northing", "depth"]].to_numpy(dtype=float)
+        ev_dist = np.linalg.norm(coord1 - coord2, axis=1)
+        dt_obs_all = pd.to_numeric(DDphase_S_use["delta_tt"], errors="coerce").to_numpy(dtype=float)
+
+        valid = (np.isfinite(idx1_all)& np.isfinite(idx2_all)& np.isfinite(ev_dist)& (ev_dist <= max_sep)& np.isfinite(dt_obs_all))
+        selected = np.flatnonzero(valid)
+        idx1 = idx1_all[selected].astype(np.int64)
+        idx2 = idx2_all[selected].astype(np.int64)
+        ttcal = np.asarray(ttcal_S, dtype=float).ravel()
+        dt_cal = ttcal[idx1] - ttcal[idx2]
+        dt_obs = dt_obs_all[selected]
+        valid_residual = (np.isfinite(dt_cal)& (np.abs(dt_obs - dt_cal) <= r_time_S))
+        selected = selected[valid_residual]
+        idx1 = idx1[valid_residual]
+        idx2 = idx2[valid_residual]
+
+        vs_kernel_DD = (vs_kernel[idx1, :] - vs_kernel[idx2, :]).tocsr()
+        hypo_kernel_S_DD = (hypo_kernel_S[idx1, :] - hypo_kernel_S[idx2, :]).tocsr()
+
+        ttcal_DD_S = ttcal[idx1] - ttcal[idx2]
+        ttobs_DD_S = dt_obs_all[selected]
+        DDphase_S_use = (DDphase_S_use.iloc[selected].reset_index(drop=True))
 
         t_resDD_P = ttobs_DD_P - ttcal_DD_P
         t_resDD_S = ttobs_DD_S - ttcal_DD_S
@@ -1091,84 +1029,37 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
                     vs_kernel.append(result)
             vs_kernel = scsp.vstack(vs_kernel).tocsr()
 
-            vp_kernel_DD = []
-            for i in range(len(DDphase_P_use)):
-                source1 = DDphase_P_use.iloc[i]["ev1"]
-                source2 = DDphase_P_use.iloc[i]["ev2"]
-                receiver = DDphase_P_use.iloc[i]["id_sta"]
-                # Cari indeks event1 dan stasiun pada phase_listP_use
-                idx1 = phase_listP_use.index[
-                    (phase_listP_use.iloc[:, 0].astype(str) == str(source1)) &
-                    (phase_listP_use.iloc[:, 1].astype(str) == str(receiver))
-                    ].to_numpy()
+            phase_keys = pd.MultiIndex.from_arrays([phase_listP_use.iloc[:, 0].astype(str),phase_listP_use.iloc[:, 1].astype(str)])
+            first = ~phase_keys.duplicated(keep="first")
+            phase_lookup = pd.Series(np.arange(len(phase_listP_use))[first],index=phase_keys[first])
 
-                # Cari indeks event2 dan stasiun pada phase_listP_use
-                idx2 = phase_listP_use.index[
-                    (phase_listP_use.iloc[:, 0].astype(str) == str(source2)) &
-                    (phase_listP_use.iloc[:, 1].astype(str) == str(receiver))
-                    ].to_numpy()
-                if len(idx1) == 0 or len(idx2) == 0:
-                    continue
+            ev1 = DDphase_P_use["ev1"].astype(str)
+            ev2 = DDphase_P_use["ev2"].astype(str)
+            sta = DDphase_P_use["id_sta"].astype(str)
+            keys1 = pd.MultiIndex.from_arrays([ev1, sta])
+            keys2 = pd.MultiIndex.from_arrays([ev2, sta])
+            idx1_all = phase_lookup.reindex(keys1).to_numpy()
+            idx2_all = phase_lookup.reindex(keys2).to_numpy()
+            idx1 = idx1_all.astype(np.int64)
+            idx2 = idx2_all.astype(np.int64)
+            vp_kernel_DD = (vp_kernel[idx1, :] - vp_kernel[idx2, :]).tocsr()
 
-                source1_data=source_list[source_list['id'].astype(str) == str(source1)]
-                source2_data=source_list[source_list['id'].astype(str) == str(source2)]
-                coord1 = np.array(source1_data[['easting','northing','depth']])
-                coord2 = np.array(source2_data[['easting','northing','depth']])
-                ev_dist= np.linalg.norm(coord1-coord2)
-                if ev_dist > max_sep:
-                    continue
 
-                # Ambil indeks baris kernel
-                idx1 = idx1[0]
-                idx2 = idx2[0]
-                if abs(float(DDphase_P_use.iloc[i]["delta_tt"])-(float(ttcal_P[idx1] - ttcal_P[idx2])))>r_time_P:
-                    continue
-                kernel1 = vp_kernel[idx1, :]
-                kernel2 = vp_kernel[idx2, :]
-                kernel_DD_i = kernel1 - kernel2
-                vp_kernel_DD.append(kernel_DD_i)
+            phase_keys = pd.MultiIndex.from_arrays([phase_listS_use.iloc[:, 0].astype(str),phase_listS_use.iloc[:, 1].astype(str)])
+            first = ~phase_keys.duplicated(keep="first")
+            phase_lookup = pd.Series(np.arange(len(phase_listS_use))[first],index=phase_keys[first])
 
-            vp_kernel_DD = scsp.vstack(vp_kernel_DD).tocsr()
+            ev1 = DDphase_S_use["ev1"].astype(str)
+            ev2 = DDphase_S_use["ev2"].astype(str)
+            sta = DDphase_S_use["id_sta"].astype(str)
+            keys1 = pd.MultiIndex.from_arrays([ev1, sta])
+            keys2 = pd.MultiIndex.from_arrays([ev2, sta])
+            idx1_all = phase_lookup.reindex(keys1).to_numpy()
+            idx2_all = phase_lookup.reindex(keys2).to_numpy()
+            idx1 = idx1_all.astype(np.int64)
+            idx2 = idx2_all.astype(np.int64)
+            vs_kernel_DD = (vs_kernel[idx1, :] - vs_kernel[idx2, :]).tocsr()
 
-            vs_kernel_DD = []
-            for i in range(len(DDphase_S_use)):
-                source1 = DDphase_S_use.iloc[i]["ev1"]
-                source2 = DDphase_S_use.iloc[i]["ev2"]
-                receiver = DDphase_S_use.iloc[i]["id_sta"]
-                # Cari indeks event1 dan stasiun pada phase_listS_use
-                idx1 = phase_listS_use.index[
-                    (phase_listS_use.iloc[:, 0].astype(str) == str(source1)) &
-                    (phase_listS_use.iloc[:, 1].astype(str) == str(receiver))
-                    ].to_numpy()
-
-                # Cari indeks event2 dan stasiun pada phase_listS_use
-                idx2 = phase_listS_use.index[
-                    (phase_listS_use.iloc[:, 0].astype(str) == str(source2)) &
-                    (phase_listS_use.iloc[:, 1].astype(str) == str(receiver))
-                    ].to_numpy()
-                if len(idx1) == 0 or len(idx2) == 0:
-                    continue
-
-                source1_data=source_list[source_list['id'].astype(str) == str(source1)]
-                source2_data=source_list[source_list['id'].astype(str) == str(source2)]
-                coord1 = np.array(source1_data[['easting','northing','depth']])
-                coord2 = np.array(source2_data[['easting','northing','depth']])
-                ev_dist= np.linalg.norm(coord1-coord2)
-                if ev_dist > max_sep:
-                    continue
-
-                # Ambil indeks baris kernel
-                idx1 = idx1[0]
-                idx2 = idx2[0]
-                if abs(float(DDphase_S_use.iloc[i]["delta_tt"])-(float(ttcal_S[idx1] - ttcal_S[idx2])))>r_time_S:
-                    continue
-                kernel1 = vs_kernel[idx1, :]
-                kernel2 = vs_kernel[idx2, :]
-                kernel_DD_i = kernel1 - kernel2
-                # Simpan kernel DD
-                vs_kernel_DD.append(kernel_DD_i)
-
-            vs_kernel_DD = scsp.vstack(vs_kernel_DD).tocsr()
 
 
     ax2=fig1.add_subplot(2,2,2)
