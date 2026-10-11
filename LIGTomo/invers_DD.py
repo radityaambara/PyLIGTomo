@@ -507,7 +507,8 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
     idx2 = idx2[valid_residual]
 
     vp_kernel_DD = (vp_kernel[idx1, :] - vp_kernel[idx2, :]).tocsr()
-    hypo_kernel_P_DD = (hypo_kernel_P[idx1, :] - hypo_kernel_P[idx2, :]).tocsr()
+    if len(hypo_list)!=0:
+        hypo_kernel_P_DD = (hypo_kernel_P[idx1, :] - hypo_kernel_P[idx2, :]).tocsr()
 
     ttcal_DD_P = ttcal[idx1] - ttcal[idx2]
     ttobs_DD_P = dt_obs_all[selected]
@@ -548,7 +549,8 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
     idx2 = idx2[valid_residual]
 
     vs_kernel_DD = (vs_kernel[idx1, :] - vs_kernel[idx2, :]).tocsr()
-    hypo_kernel_S_DD = (hypo_kernel_S[idx1, :] - hypo_kernel_S[idx2, :]).tocsr()
+    if len(hypo_list)!=0:
+        hypo_kernel_S_DD = (hypo_kernel_S[idx1, :] - hypo_kernel_S[idx2, :]).tocsr()
 
     ttcal_DD_S = ttcal[idx1] - ttcal[idx2]
     ttobs_DD_S = dt_obs_all[selected]
@@ -872,7 +874,8 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         idx2 = idx2[valid_residual]
 
         vp_kernel_DD = (vp_kernel[idx1, :] - vp_kernel[idx2, :]).tocsr()
-        hypo_kernel_P_DD = (hypo_kernel_P[idx1, :] - hypo_kernel_P[idx2, :]).tocsr()
+        if len(hypo_list)!=0:
+            hypo_kernel_P_DD = (hypo_kernel_P[idx1, :] - hypo_kernel_P[idx2, :]).tocsr()
 
         ttcal_DD_P = ttcal[idx1] - ttcal[idx2]
         ttobs_DD_P = dt_obs_all[selected]
@@ -913,7 +916,8 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         idx2 = idx2[valid_residual]
 
         vs_kernel_DD = (vs_kernel[idx1, :] - vs_kernel[idx2, :]).tocsr()
-        hypo_kernel_S_DD = (hypo_kernel_S[idx1, :] - hypo_kernel_S[idx2, :]).tocsr()
+        if len(hypo_list) != 0:
+            hypo_kernel_S_DD = (hypo_kernel_S[idx1, :] - hypo_kernel_S[idx2, :]).tocsr()
 
         ttcal_DD_S = ttcal[idx1] - ttcal[idx2]
         ttobs_DD_S = dt_obs_all[selected]
