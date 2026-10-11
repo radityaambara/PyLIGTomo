@@ -205,7 +205,7 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
             #    v_rows.extend([successful_row_idx] * v_nz.size)
             #    v_cols.extend(v_nz)
             #    v_data.extend(krn_i[v_nz])
-            if len(hypo_list) != 0 and types_P[i] == 0:
+            if len(hypo_list) != 0 and types_P[i] == 'e':
                 phase_id = int(phase_listP_use.iloc[i, 0])
                 if phase_id in hypo_id_to_idx:
                     event_index_i = hypo_id_to_idx[phase_id]
@@ -256,7 +256,7 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
             ttcal_S.append(float(ttcal_i))
             phase_listS_use_dum.append(phase_listS_use.iloc[i,:])
             ttobsS_dum.append(ttobs_S[i])
-            if len(hypo_list) != 0 and types_S[i] == 0:
+            if len(hypo_list) != 0 and types_S[i] == 'e':
                 phase_id = int(phase_listS_use.iloc[i, 0])
                 if phase_id in hypo_id_to_idx:
                     event_index_i = hypo_id_to_idx[phase_id]
@@ -622,7 +622,7 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
                 ttcal_P.append(float(ttcal_i))
                 phase_listP_use_dum.append(phase_listP_use.iloc[i, :])
                 ttobsP_dum.append(ttobs_P[i])
-                if len(hypo_list) != 0 and types_P[i] == 0:
+                if len(hypo_list) != 0 and types_P[i] == 'e':
                     phase_id = int(phase_listP_use.iloc[i, 0])
                     if phase_id in hypo_id_to_idx:
                         event_index_i = hypo_id_to_idx[phase_id]
@@ -666,7 +666,7 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
                 ttcal_S.append(float(ttcal_i))
                 phase_listS_use_dum.append(phase_listS_use.iloc[i, :])
                 ttobsS_dum.append(ttobs_S[i])
-                if len(hypo_list) != 0 and types_S[i] == 0:
+                if len(hypo_list) != 0 and types_S[i] == 'e'':
                     phase_id = int(phase_listS_use.iloc[i, 0])
                     if phase_id in hypo_id_to_idx:
                         event_index_i = hypo_id_to_idx[phase_id]

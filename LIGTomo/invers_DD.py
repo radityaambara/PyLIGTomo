@@ -231,7 +231,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
             #    v_rows.extend([successful_row_idx] * v_nz.size)
             #    v_cols.extend(v_nz)
             #    v_data.extend(krn_i[v_nz])
-            if len(hypo_list) != 0 and types_P[i] == 0:
+            if len(hypo_list) != 0 and types_P[i] == 'e':
                 phase_id = int(phase_listP_use.iloc[i, 0])
                 if phase_id in hypo_id_to_idx:
                     event_index_i = hypo_id_to_idx[phase_id]
@@ -282,7 +282,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
             ttcal_S.append(float(ttcal_i))
             phase_listS_use_dum.append(phase_listS_use.iloc[i,:])
             ttobsS_dum.append(ttobs_S[i])
-            if len(hypo_list) != 0 and types_S[i] == 0:
+            if len(hypo_list) != 0 and types_S[i] == 'e':
                 phase_id = int(phase_listS_use.iloc[i, 0])
                 if phase_id in hypo_id_to_idx:
                     event_index_i = hypo_id_to_idx[phase_id]
@@ -456,12 +456,14 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
 
     #update_data_use
     vp_kernel=vp_kernel[abs(t_res_P_awal)<r_time_P,:]
+    ttcal_P=ttcal_P[abs(t_res_P_awal)<r_time_P]
     if len(hypo_list)!=0:
         hypo_kernel_P=hypo_kernel_P[abs(t_res_P_awal)<r_time_P,:]
     phase_listP_use=phase_listP_use.loc[phase_listP_use['t_res']<r_time_P].reset_index(drop=True)
     t_res_P_awal=t_res_P_awal[abs(t_res_P_awal)<r_time_P]
 
     vs_kernel=vs_kernel[abs(t_res_S_awal)<r_time_S,:]
+    ttcal_S=ttcal_S[abs(t_res_S_awal)<r_time_S]
     if len(hypo_list)!=0:
         hypo_kernel_S=hypo_kernel_S[abs(t_res_S_awal)<r_time_S,:]
     phase_listS_use=phase_listS_use.loc[phase_listS_use['t_res']<r_time_S].reset_index(drop=True)
@@ -772,7 +774,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
                 ttcal_P.append(float(ttcal_i))
                 phase_listP_use_dum.append(phase_listP_use.iloc[i, :])
                 ttobsP_dum.append(ttobs_P[i])
-                if len(hypo_list) != 0 and types_P[i] == 0:
+                if len(hypo_list) != 0 and types_P[i] == 'e':
                     phase_id = int(phase_listP_use.iloc[i, 0])
                     if phase_id in hypo_id_to_idx:
                         event_index_i = hypo_id_to_idx[phase_id]
@@ -816,7 +818,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
                 ttcal_S.append(float(ttcal_i))
                 phase_listS_use_dum.append(phase_listS_use.iloc[i, :])
                 ttobsS_dum.append(ttobs_S[i])
-                if len(hypo_list) != 0 and types_S[i] == 0:
+                if len(hypo_list) != 0 and types_S[i] == 'e':
                     phase_id = int(phase_listS_use.iloc[i, 0])
                     if phase_id in hypo_id_to_idx:
                         event_index_i = hypo_id_to_idx[phase_id]
@@ -849,6 +851,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
 
         #update data
         vp_kernel = vp_kernel[abs(t_res_P) < r_time_P, :]
+        ttcal_P = ttcal_P[abs(t_res_P) < r_time_P]
         if len(hypo_list)!=0:
             hypo_kernel_P = hypo_kernel_P[abs(t_res_P) < r_time_P, :]
         phase_listP_use = phase_listP_use.loc[phase_listP_use['t_res'] < r_time_P].reset_index(drop=True)
@@ -856,6 +859,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         t_res_P = t_res_P[abs(t_res_P) < r_time_P]
 
         vs_kernel = vs_kernel[abs(t_res_S) < r_time_S, :]
+        ttcal_S = ttcal_S[abs(t_res_S) < r_time_S]
         if len(hypo_list)!=0:
             hypo_kernel_S = hypo_kernel_S[abs(t_res_S) < r_time_S, :]
         phase_listS_use = phase_listS_use.loc[phase_listS_use['t_res'] < r_time_S].reset_index(drop=True)
@@ -994,13 +998,13 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
             if param_i==param_len-1:
                 break
             t_res = np.hstack((t_res_P, t_resDD_P*weightDD_i, t_res_S, t_resDD_S*weightDD_i))
-        if abs(rms2-rms1)<d_rms and iter>0:
+        elif abs(rms2-rms1)<d_rms and iter>0:
             param_i+=1
             weightDD_i=weightDD[param_i]
             if param_i==param_len-1:
                 break
             t_res = np.hstack((t_res_P, t_resDD_P*weightDD_i, t_res_S, t_resDD_S*weightDD_i))
-        if iter == iteration_number-1:
+        elif iter == iteration_number-1:
             break
         t_res_noweight = np.hstack((t_res_P, t_resDD_P, t_res_S, t_resDD_S))
         rms1 = np.sqrt(np.mean(t_res_noweight ** 2))

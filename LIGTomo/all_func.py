@@ -517,16 +517,29 @@ def smooth_matrix(node_inv):
                triang.vertex_neighbor_vertices[0][pindex]:triang.vertex_neighbor_vertices[0][pindex + 1]]
 
     tri=Delaunay(node_inv)
-    mat_list=[]
+    rows = []
+    cols = []
+    data = []
+    row_idx = 0
     for i in range(len(node_inv)):
-        neighbor_indices=find_neighbors(i,tri)
-        for j in range(len(neighbor_indices)):
-            mat_j=np.zeros((len(node_inv)))
-            mat_j[i]=1
-            mat_j[neighbor_indices[j]]=-1
-            mat_list.append(mat_j)
+        neighbor_indices = find_neighbors(i, tri)
+        for j in neighbor_indices:
+            # Diagonal element (+1)
+            rows.append(row_idx)
+            cols.append(i)
+            data.append(1.0)
+            # Neighbor element (-1)
+            rows.append(row_idx)
+            cols.append(j)
+            data.append(-1.0)
+            row_idx += 1
+    # Construct sparse matrix
+    smooth = scsp.coo_array(
+        (data, (rows, cols)),
+        shape=(row_idx, len(node_inv))
+    ).tocsr()
+    return smooth
 
-    return np.array(mat_list)
 
 """A class to determine whether or not to add a node in 
 the middle of a tetrahedron with threshold consideration. 
