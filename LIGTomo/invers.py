@@ -666,7 +666,7 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
                 ttcal_S.append(float(ttcal_i))
                 phase_listS_use_dum.append(phase_listS_use.iloc[i, :])
                 ttobsS_dum.append(ttobs_S[i])
-                if len(hypo_list) != 0 and types_S[i] == 'e'':
+                if len(hypo_list) != 0 and types_S[i] == 'e':
                     phase_id = int(phase_listS_use.iloc[i, 0])
                     if phase_id in hypo_id_to_idx:
                         event_index_i = hypo_id_to_idx[phase_id]
