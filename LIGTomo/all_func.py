@@ -234,6 +234,7 @@ class VelocityGrid:
 
                     if tt<min_ttime:
                         best_path = pathn
+                        min_ttime = tt
         if best_path is None:
             raise ValueError("No path found.")
         return best_path
