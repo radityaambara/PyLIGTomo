@@ -652,7 +652,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
 
         #update_hypo
         if len(hypo_list)!=0:
-            d_hypo = dm[:(len(hypo_list) * 4)].reshape(len(hypo_list), 4)
+            d_hypo = inversion_result[0][:(len(hypo_list) * 4)].reshape(len(hypo_list), 4)
             cols = ['to_update', 'easting', 'northing', 'elevation']
             hypo_list[cols] = (hypo_list[cols].to_numpy(dtype=float) + d_hypo)
             hypo_list['to_update_i'] = d_hypo[:, 0]
