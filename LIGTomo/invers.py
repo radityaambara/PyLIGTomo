@@ -466,8 +466,8 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
         vp_kernel_zeros = scsp.csr_array((vs_kernel.shape[0],vp_kernel.shape[1]))
         vs_kernel_zeros = scsp.csr_array((vp_kernel.shape[0],vs_kernel.shape[1]))
 
-        weight_inv = scsp.diags(1 / (weight[weight != 0]))
-        smooth_damp=scsp.csr_array(smooth_matrix(node[weight != 0,:]))*damping_2
+        weight_inv = scsp.diags(1 / (weight))
+        smooth_damp=scsp.csr_array(smooth_matrix(node))*damping_2
         zeros_smooth=scsp.csr_array(smooth_damp.shape)
 
         v_stack_P = scsp.vstack([vp_kernel, vp_kernel_zeros, smooth_damp, zeros_smooth])
@@ -515,26 +515,24 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
 
         #updateVp
         #vel_awal_P = copy(vel_node_P)
-        vawal_P = copy(vel_node_P[weight!=0])
+        vawal_P = copy(vel_node_P)
         dsawal_P = 1 / vawal_P
         dsakhir_P = ds_P + dsawal_P
-        vel_node_P[weight!=0] = 1 / dsakhir_P
+        vel_node_P = 1 / dsakhir_P
 
         #updateVs
         #vel_awal_S = copy(vel_node_S)
-        vawal_S = copy(vel_node_S[weight!=0])
+        vawal_S = copy(vel_node_S)
         dsawal_S = 1 / vawal_S
         dsakhir_S = ds_S + dsawal_S
-        vel_node_S[weight!=0] = 1 / dsakhir_S
+        vel_node_S = 1 / dsakhir_S
 
         #update_hypo
         if len(hypo_list)!=0:
-            for i in range(0,len(hypo_list)):
-                hypo_list.loc[i,'to_update'] += inversion_result[0][i*4]
-                hypo_list.loc[i,'easting'] += inversion_result[0][i*4+1]
-                hypo_list.loc[i,'northing'] += inversion_result[0][i*4+2]
-                hypo_list.loc[i,'elevation'] += inversion_result[0][i*4+3]
-                hypo_list.loc[i,'to_update_i'] = inversion_result[0][i * 4]
+            d_hypo = dm[:(len(hypo_list) * 4)].reshape(len(hypo_list), 4)
+            cols = ['to_update', 'easting', 'northing', 'elevation']
+            hypo_list[cols] = (hypo_list[cols].to_numpy(dtype=float) + d_hypo)
+            hypo_list['to_update_i'] = d_hypo[:, 0]
             source_list_invers=pd.concat([hypo_list, blast_list], ignore_index=True)
         else:
             source_list_invers=blast_list

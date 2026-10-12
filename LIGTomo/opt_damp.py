@@ -423,17 +423,14 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         print('start iteration:', iter)
         weight = np.sqrt(vor_volumes(node))
         weight[weight == 0] = np.max(weight)
-        vp_kernel_inv = vp_kernel[:, weight != 0]
-        vs_kernel_inv = vs_kernel[:, weight != 0]
-        vp_kernel_zeros = np.zeros((vs_kernel_inv.shape[0],vp_kernel_inv.shape[1]))
-        vs_kernel_zeros = np.zeros((vp_kernel_inv.shape[0],vs_kernel_inv.shape[1]))
-
-        weight_inv = scsp.diags(1 / (weight[weight != 0]))
-        smooth_damp=scsp.csr_array(smooth_matrix(node[weight != 0,:]))*damping_list.iloc[iter,1]
+        vp_kernel_zeros = np.zeros((vs_kernel.shape[0],vp_kernel.shape[1]))
+        vs_kernel_zeros = np.zeros((vp_kernel.shape[0],vs_kernel.shape[1]))
+        weight_inv = scsp.diags(1 / (weight))
+        smooth_damp=scsp.csr_array(smooth_matrix(node))*damping_list.iloc[iter,1]
         zeros_smooth=scsp.csr_array(smooth_damp.shape)
 
-        v_stack_P = scsp.vstack([vp_kernel_inv, vp_kernel_zeros, smooth_damp, zeros_smooth])
-        v_stack_S = scsp.vstack([vs_kernel_zeros, vs_kernel_inv, zeros_smooth, smooth_damp])
+        v_stack_P = scsp.vstack([vp_kernel, vp_kernel_zeros, smooth_damp, zeros_smooth])
+        v_stack_S = scsp.vstack([vs_kernel_zeros, vs_kernel, zeros_smooth, smooth_damp])
         inv_matrix_P = v_stack_P.dot(weight_inv)
         inv_matrix_S = v_stack_S.dot(weight_inv)
 
@@ -448,11 +445,11 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         inversion_result = lsmr(inv_matrix_hypo, t_res_inv, damp=damping_list.iloc[iter,0])
 
         if len(hypo_list)!=0:
-            ds_P=inversion_result[0][hypo_kernel_P.shape[1]:hypo_kernel_P.shape[1]+vp_kernel_inv.shape[1]]*weight_inv.diagonal()
-            ds_S=inversion_result[0][hypo_kernel_P.shape[1]+vp_kernel_inv.shape[1]:]*weight_inv.diagonal()
+            ds_P=inversion_result[0][hypo_kernel_P.shape[1]:hypo_kernel_P.shape[1]+vp_kernel.shape[1]]*weight_inv.diagonal()
+            ds_S=inversion_result[0][hypo_kernel_P.shape[1]+vp_kernel.shape[1]:]*weight_inv.diagonal()
         else:
-            ds_P = inversion_result[0][:vp_kernel_inv.shape[1]]*weight_inv.diagonal()
-            ds_S = inversion_result[0][vp_kernel_inv.shape[1]:]*weight_inv.diagonal()
+            ds_P = inversion_result[0][:vp_kernel.shape[1]]*weight_inv.diagonal()
+            ds_S = inversion_result[0][vp_kernel.shape[1]:]*weight_inv.diagonal()
         print("CND: "+str(inversion_result[6]))
         print("istop: "+str(inversion_result[1]))
         rnorm_list.append(inversion_result[3])
@@ -470,18 +467,18 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         #updateVp
         vel_awal_P = copy(vel_node_P)
         vel_node_P_akhir = copy(vel_node_P)
-        vawal_P = copy(vel_node_P[weight!=0])
+        vawal_P = copy(vel_node_P)
         dsawal_P = 1 / vawal_P
         dsakhir_P = ds_P + dsawal_P
-        vel_node_P_akhir[weight!=0] = 1 / dsakhir_P
+        vel_node_P_akhir = 1 / dsakhir_P
 
         #updateVs
         vel_awal_S = copy(vel_node_S)
         vel_node_S_akhir = copy(vel_node_S)
-        vawal_S = copy(vel_node_S[weight!=0])
+        vawal_S = copy(vel_node_S)
         dsawal_S = 1 / vawal_S
         dsakhir_S = ds_S + dsawal_S
-        vel_node_S_akhir[weight!=0] = 1 / dsakhir_S
+        vel_node_S_akhir = 1 / dsakhir_S
 
         dv_P=vel_node_P_akhir-vel_awal_P
         dv_S=vel_node_S_akhir-vel_awal_S
@@ -492,12 +489,10 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         logger.info('velocity variant in parameter '+ str(iter)+' :'+str(dv_var_i))
         #update_hypo
         if len(hypo_list)!=0:
-            for i in range(0,len(hypo_list)):
-                hypo_list.loc[i,'to_update'] += inversion_result[0][i*4]
-                hypo_list.loc[i,'easting'] += inversion_result[0][i*4+1]
-                hypo_list.loc[i,'northing'] += inversion_result[0][i*4+2]
-                hypo_list.loc[i,'elevation'] += inversion_result[0][i*4+3]
-                hypo_list.loc[i,'to_update_i'] = inversion_result[0][i * 4]
+            d_hypo = dm[:(len(hypo_list) * 4)].reshape(len(hypo_list), 4)
+            cols = ['to_update', 'easting', 'northing', 'elevation']
+            hypo_list[cols] = (hypo_list[cols].to_numpy(dtype=float) + d_hypo)
+            hypo_list['to_update_i'] = d_hypo[:, 0]
             source_list_invers=pd.concat([hypo_list, blast_list], ignore_index=True)
             dis_var_i=np.sqrt(np.mean((inversion_result[0][:(len(hypo_list)*4)])**2))
             dis_var.append(dis_var_i)
