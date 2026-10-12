@@ -15,8 +15,8 @@ import os
 
 
 def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, delt, deltn, xfac, iter1, iter2, tmin,
-                 iteration_number, up_threshold, low_threshold, dens_thres, d_rms, r_time_P, r_time_S, damping_1, damping_2,
-               update_grid,folder_name,if_art=True,update_grid_after=False,nu_cpu=os.cpu_count()-1):
+               iteration_number, up_threshold, low_threshold, dens_thres, d_rms, r_time_P, r_time_S, damping_hypo, 
+               damping_p, damping_s, damping_smooth, update_grid,folder_name,if_art=True,update_grid_after=False,nu_cpu=os.cpu_count()-1):
     #load model parameter
     f_path='./'+folder_name
     if not os.path.exists(f_path):
@@ -43,8 +43,10 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
                 "\n d_rms: "+str(d_rms)+
                 "\n r_time_P: "+str(r_time_P)+
                 "\n r_time_S: "+str(r_time_S)+
-                "\n damping_1: "+str(damping_1)+
-                "\n damping_2: "+str(damping_2)+
+                "\n damping_hypo: "+str(damping_hypo)+
+                "\n damping_p: "+str(damping_p)+
+                "\n damping_s: "+str(damping_s)+
+                "\n damping_smooth: "+str(damping_smooth)+
                 "\n update_grid: "+str(update_grid))
 
     print('running in progress')
@@ -73,8 +75,10 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
     d_rms=float(d_rms)
     r_time_P = float(r_time_P)
     r_time_S = float(r_time_S)
-    damping_1 = float(damping_1)
-    damping_2 = float(damping_2)
+    damping_hypo = float(damping_hypo)
+    damping_p = float(damping_p)
+    damping_s = float(damping_s)
+    damping_smooth = float(damping_smooth)
     update_grid = bool(update_grid)
     update_grid_after = bool(update_grid_after)
     folder_name=str(folder_name)
@@ -463,26 +467,46 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
         logger.info('start iteration: ' + str(iter))
         weight = np.sqrt(vor_volumes(node))
         weight[weight == 0] = np.max(weight)
-        vp_kernel_zeros = scsp.csr_array((vs_kernel.shape[0],vp_kernel.shape[1]))
-        vs_kernel_zeros = scsp.csr_array((vp_kernel.shape[0],vs_kernel.shape[1]))
-
-        weight_inv = scsp.diags(1 / (weight))
-        smooth_damp=scsp.csr_array(smooth_matrix(node))*damping_2
-        zeros_smooth=scsp.csr_array(smooth_damp.shape)
-
-        v_stack_P = scsp.vstack([vp_kernel, vp_kernel_zeros, smooth_damp, zeros_smooth])
-        v_stack_S = scsp.vstack([vs_kernel_zeros, vs_kernel, zeros_smooth, smooth_damp])
-        inv_matrix_P = v_stack_P.dot(weight_inv)
-        inv_matrix_S = v_stack_S.dot(weight_inv)
+        weight_inv = scsp.diags(1.0 / weight,format="csr")
+        n_p = vp_kernel.shape[1]
+        n_s = vs_kernel.shape[1]
+        if n_p != len(weight) or n_s != len(weight):
+            raise ValueError("Kernel and Voronoi node size mismatch")
+        vp_kernel=vp_kernel @ weight_inv
+        vs_kernel=vs_kernel @ weight_inv
+        
+        L = scsp.csr_array(smooth_matrix(node))
+        L_smooth = damping_smooth * (L @ weight_inv)
+        Dp = damping_p * weight_inv
+        Ds = damping_s * weight_inv
 
         if len(hypo_list)!=0:
-            hypo_zero=scsp.csr_array((smooth_damp.shape[0]*2, hypo_kernel_P.shape[1]))
-            hypo_kernel_inv=scsp.vstack((hypo_kernel_P,hypo_kernel_S,hypo_zero))
-            inv_matrix_hypo = scsp.hstack((hypo_kernel_inv, inv_matrix_P, inv_matrix_S))
+            n_h=len(hypo_list)*4
+            G_data=scsp.block_array([
+            [hypo_kernel_P, vp_kernel, None],
+            [hypo_kernel_S, None, vs_kernel]],format="csr")
+
+            Dh=damping_hypo*scsp.eye(n_h,format="csr")
+            G_regularization = scsp.block_array([
+        [Dh,   None,     None],
+        [None, Dp,       None],
+        [None, None,     Ds],
+        [None, L_smooth, None],
+        [None, None,     L_smooth]], format="csr")   
+
         else:
-            inv_matrix_hypo=scsp.hstack((inv_matrix_P, inv_matrix_S))
-        t_smooth = np.zeros((smooth_damp.shape[0] * 2))
-        t_res_inv = np.hstack((t_res, t_smooth))
+            G_data=scsp.block_array([
+            [vp_kernel, None],
+            [None, vs_kernel]],format="csr")
+            G_regularization = scsp.block_array([
+        [Dp,       None], 
+        [None,     Ds],
+        [L_smooth, None],
+        [None,     L_smooth]], format="csr")
+
+       
+        inv_matrix_hypo = scsp.vstack([G_data,G_regularization], format="csr")
+        t_res_inv = np.concatenate([np.asarray(t_res, dtype=float).ravel(),np.zeros(G_regularization.shape[0])])
         ## add resolution matrix
         #i_damp=np.identity(inv_matrix_hypo.shape[1])*damping_1
         #G_full=np.vstack((inv_matrix_hypo,i_damp))
@@ -492,7 +516,7 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
         # print(diag_res)
         # logger.info('diagonal resolution matrix: ' + str(diag_res))
         ## resolution matrix end here
-        inversion_result = lsmr(inv_matrix_hypo, t_res_inv, damp=damping_1)
+        inversion_result = lsmr(inv_matrix_hypo, t_res_inv)
 
         if len(hypo_list)!=0:
             ds_P=inversion_result[0][hypo_kernel_P.shape[1]:hypo_kernel_P.shape[1]+vp_kernel.shape[1]]*weight_inv.diagonal()
