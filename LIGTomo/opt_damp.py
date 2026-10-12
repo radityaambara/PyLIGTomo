@@ -401,6 +401,8 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
     t_res_S_awal=t_res_S_awal[abs(t_res_S_awal)<r_time_S]
 
     t_res_awal=np.hstack((t_res_P_awal,t_res_S_awal))
+    vp_kernel_awal=vp_kernel.copy()
+    vs_kernel_awal=vs_kernel.copy()
     rms1 = np.sqrt(np.mean(t_res_awal ** 2))
 
     rms_list=[]
@@ -424,12 +426,12 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         weight = np.sqrt(vor_volumes(node))
         weight[weight == 0] = np.max(weight)
         weight_inv = scsp.diags(1.0 / weight,format="csr")
-        n_p = vp_kernel.shape[1]
-        n_s = vs_kernel.shape[1]
+        n_p = vp_kernel_awal.shape[1]
+        n_s = vs_kernel_awal.shape[1]
         if n_p != len(weight) or n_s != len(weight):
             raise ValueError("Kernel and Voronoi node size mismatch")
-        vp_kernel=vp_kernel @ weight_inv
-        vs_kernel=vs_kernel @ weight_inv
+        vp_kernel=vp_kernel_awal @ weight_inv
+        vs_kernel=vs_kernel_awal @ weight_inv
         
         L = scsp.csr_array(smooth_matrix(node))
         L_smooth = damping_list.iloc[iter,3] * (L @ weight_inv)
@@ -460,9 +462,8 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         [L_smooth, None],
         [None,     L_smooth]], format="csr")
 
-       
         inv_matrix_hypo = scsp.vstack([G_data,G_regularization], format="csr")
-        t_res_inv = np.concatenate([np.asarray(t_res, dtype=float).ravel(),np.zeros(G_regularization.shape[0])])
+        t_res_inv = np.concatenate([np.asarray(t_res_awal, dtype=float).ravel(),np.zeros(G_regularization.shape[0])])
 
         inversion_result = lsmr(inv_matrix_hypo, t_res_inv)
 
@@ -645,7 +646,8 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
     damping_list['CND']=np.array(CND_list)
     damping_list.to_csv(folder_name+'/param_opt.csv', index=False)
     #plot figure1
-    labels = (damping_list['damp_list'].astype(str)+ ','+ damping_list['smooth_damp'].astype(str))
+    labels = (damping_list['damp_hypo'].astype(str)+ ','+ damping_list['damp_p'].astype(str)+
+              ','+damping_list['damp_s'].astype(str)+ ','+ damping_list['damp_smooth'].astype(str))
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.scatter(damping_list['rnorm'],damping_list['xnorm'])
     for x, y, label in zip(damping_list['rnorm'],damping_list['xnorm'],labels):
