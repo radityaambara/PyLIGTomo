@@ -31,7 +31,7 @@ pip install -e .
 
 ## Requirements
 
-- Python >= 3.8
+- Python >= 3.10
 - numpy
 - scipy
 - matplotlib
@@ -122,8 +122,10 @@ run_invers(
     d_rms=0.001,
     r_time_P=100.0,
     r_time_S=100.0,
-    damping_1=0.1,
-    damping_2=0.01,
+    damping_hypo=0.1,
+    damping_p=0.01,
+    damping_s=0.01,
+    damping_smooth=0,
     update_grid=False,
     folder_name='test_invers',
     if_art=False,
@@ -196,8 +198,10 @@ A pandas DataFrame with columns:
 | `low_threshold` | RHC threshold for removing nodes | 0 |
 | `dens_thres` | Density tensor threshold for node removal | -1 |
 | `d_rms` | RMS damping parameter | 0.001 |
-| `damping_1` | Damping for hypocenter coordinates | 0.1 |
-| `damping_2` | Damping for velocity perturbations | 0.01 |
+| `damping_hypo` | Damping for hypocenter coordinates | 0.1 |
+| `damping_p` | Damping for velocity perturbations P| 0.01 |
+| `damping_s` | Damping for velocity perturbations S| 0.01 |
+| `damping_smooth` | Damping for velocity smoothness| 0.0  |
 | `update_grid` | Update grid nodes after inversion | False |
 
 ## Output Files
