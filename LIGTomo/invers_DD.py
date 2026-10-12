@@ -43,6 +43,8 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
                 "\n d_rms: "+str(d_rms)+
                 "\n r_time_P: "+str(r_time_P)+
                 "\n r_time_S: "+str(r_time_S)+
+                "\n max_sep: "+str(max_sep)+
+                "\n weightDD: "+', '.join(str(w) for w in weightDD)+
                 "\n damping_hypo: "+str(damping_hypo)+
                 "\n damping_p: "+str(damping_p)+
                 "\n damping_s: "+str(damping_s)+
