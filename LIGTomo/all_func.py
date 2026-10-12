@@ -604,5 +604,28 @@ class is_addnode:
         return add_node,add_velP,add_velS
 
 
+def update_ttobs_DD(dd_phase,source_list_invers):
+        # Event ID -> cumulative origin-time correction
+    source_time = source_list_invers[['id', 'to_update']].copy()
+    source_time['id'] = source_time['id'].astype(str)
+    # Check duplicate IDs
+    if source_time['id'].duplicated().any():
+        raise ValueError("Duplicate event IDs found")
 
+    time_lookup = (source_time.set_index('id')['to_update'])
+    # Match events
+    ev1 = dd_phase['ev1'].astype(str)
+    ev2 = dd_phase['ev2'].astype(str)
+    t01 = ev1.map(time_lookup).to_numpy(dtype=float)
+    t02 = ev2.map(time_lookup).to_numpy(dtype=float)
+    # Original DD observation
+    dt_obs = pd.to_numeric(dd_phase['delta_tt'],errors='raise').to_numpy(dtype=float)
+
+    # Validate inputs
+    if not (np.all(np.isfinite(t01))and np.all(np.isfinite(t02))and np.all(np.isfinite(dt_obs))):
+        raise ValueError("Invalid DD observation or missing origin-time update")
+
+    # Apply cumulative origin-time correction
+    ttobs_DD = dt_obs - (t01 - t02)
+    return ttobs_DD
 

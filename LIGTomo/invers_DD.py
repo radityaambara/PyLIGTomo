@@ -1,4 +1,4 @@
-from .all_func import VelocityGrid, vor_volumes, smooth_matrix, is_addnode, count_tensor_dens
+from .all_func import VelocityGrid, vor_volumes, smooth_matrix, is_addnode, count_tensor_dens, update_ttobs_DD
 from copy import copy
 from scipy.sparse.linalg import lsmr
 import scipy.sparse as scsp
@@ -864,6 +864,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
 
         print('create DD kernel')
         logger.info('create DD kernel')
+        
         phase_keys = pd.MultiIndex.from_arrays([phase_listP_use.iloc[:, 0].astype(str),phase_listP_use.iloc[:, 1].astype(str)])
         first = ~phase_keys.duplicated(keep="first")
         phase_lookup = pd.Series(np.arange(len(phase_listP_use))[first],index=phase_keys[first])
@@ -884,7 +885,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         coord1 = source_coords.reindex(ev1)[["easting", "northing", "depth"]].to_numpy(dtype=float)
         coord2 = source_coords.reindex(ev2)[["easting", "northing", "depth"]].to_numpy(dtype=float)
         ev_dist = np.linalg.norm(coord1 - coord2, axis=1)
-        dt_obs_all = pd.to_numeric(DDphase_P_use["delta_tt"], errors="coerce").to_numpy(dtype=float)
+        dt_obs_all = update_ttobs_DD(DDphase_P_use,source_list_invers)
 
         valid = (np.isfinite(idx1_all)& np.isfinite(idx2_all)& np.isfinite(ev_dist)& (ev_dist <= max_sep)& np.isfinite(dt_obs_all))
         selected = np.flatnonzero(valid)
@@ -926,7 +927,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         coord1 = source_coords.reindex(ev1)[["easting", "northing", "depth"]].to_numpy(dtype=float)
         coord2 = source_coords.reindex(ev2)[["easting", "northing", "depth"]].to_numpy(dtype=float)
         ev_dist = np.linalg.norm(coord1 - coord2, axis=1)
-        dt_obs_all = pd.to_numeric(DDphase_S_use["delta_tt"], errors="coerce").to_numpy(dtype=float)
+        dt_obs_all = update_ttobs_DD(DDphase_S_use, source_list_invers)
 
         valid = (np.isfinite(idx1_all)& np.isfinite(idx2_all)& np.isfinite(ev_dist)& (ev_dist <= max_sep)& np.isfinite(dt_obs_all))
         selected = np.flatnonzero(valid)
