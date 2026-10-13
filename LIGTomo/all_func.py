@@ -211,15 +211,13 @@ class VelocityGrid:
         min_ttime=self.tt(path)
         L=np.linalg.norm(path[0]-path[-1])
         radius_list = [
-            0.51 * L,
-            0.6 * L,
+            0.5 * L,
             0.8 * L,
             1.0 * L,
             1.5 * L,
             2.0 * L,
             5.0 * L,
             10.0 * L,
-            100.0 * L
         ]
         plane_angles = np.linspace(0,np.pi,12,endpoint=False
 )
