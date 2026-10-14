@@ -15,7 +15,7 @@ import os
 
 
 def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list, dt_list, damping_list, delt, deltn, xfac, iter1, iter2, tmin,
-                 iteration_number, up_threshold, low_threshold, dens_thres, d_rms, r_time_P, r_time_S, max_sep, weightDD,
+                 up_threshold, low_threshold, dens_thres, d_rms, r_time_P, r_time_S, max_sep, weightDD,
                  update_grid,folder_name,if_art=True,update_grid_after=False,nu_cpu=os.cpu_count()-1):
     #load model parameter
     f_path='./'+folder_name
@@ -584,7 +584,7 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
 
 
     #mulai iterasi:
-    for iter in range(0, iteration_number):
+    for iter in range(0, len(damping_list)):
         source_list_invers = source_list.copy()
         source_list_invers['to_update'] = 0
         source_list_invers['to_update_i'] = 0
@@ -596,13 +596,13 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
 
         vp_kernel=vp_kernel_awal@weight_inv
         vs_kernel=vs_kernel_awal@weight_inv
-        Dp = damping_p * weight_inv
-        Ds = damping_s * weight_inv
+        Dp = damping_list.iloc[iter,1] * weight_inv
+        Ds = damping_list.iloc[iter,2] * weight_inv
 
         vp_kernel_DD=weightDD*(vp_kernel_DD_awal@weight_inv)
         vs_kernel_DD=weightDD*(vs_kernel_DD_awal@weight_inv)
         L = scsp.csr_array(smooth_matrix(node))
-        L_smooth = damping_smooth * (L @ weight_inv)
+        L_smooth = damping_list.iloc[iter,3] * (L @ weight_inv)
 
         if len(hypo_list)!=0:
             n_h=len(hypo_list)*4
@@ -613,7 +613,7 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
         [hypo_kernel_P_DD, vp_kernel_DD,    None],
         [hypo_kernel_S_awal,    None,     vs_kernel],
         [hypo_kernel_S_DD, None,     vs_kernel_DD]], format="csr")
-            Dh = damping_hypo * scsp.eye(n_h, format="csr")
+            Dh = damping_list.iloc[iter,0]* scsp.eye(n_h, format="csr")
             G_regularization = scsp.block_array([
         [Dh,   None,     None],
         [None, Dp,       None],
