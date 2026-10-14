@@ -61,6 +61,7 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
                 "\n tmin: "+str(tmin)+
                 "\n up_threshold: "+str(up_threshold)+
                 "\n low_threshold: "+str(low_threshold)+
+                "\n dens_thres: "+str(dens_thres)+
                 "\n r_time_P: "+str(r_time_P)+
                 "\n r_time_S: "+str(r_time_S)+
                 "\n update_grid: "+str(update_grid))

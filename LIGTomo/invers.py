@@ -40,6 +40,7 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
                 "\n iteration_number: "+str(iteration_number)+
                 "\n up_threshold: "+str(up_threshold)+
                 "\n low_threshold: "+str(low_threshold)+
+                "\n dens_thres: "+str(dens_thres)+
                 "\n d_rms: "+str(d_rms)+
                 "\n r_time_P: "+str(r_time_P)+
                 "\n r_time_S: "+str(r_time_S)+
