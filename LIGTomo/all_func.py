@@ -227,7 +227,7 @@ class VelocityGrid:
                     try:
                         pathn = self.generate_circular_arc(path[0,:],path[-1,:],radius,angle,npoints,side)
                         tt   = self.tt(pathn)
-                    except ValueError:
+                    except:
                         continue
 
                     if tt<min_ttime:

@@ -566,8 +566,8 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
 
     phase_listP_use_awal=phase_listP_use.copy()
     phase_listS_use_awal=phase_listS_use.copy()
-    DD_phase_P_use_awal=DDphase_P_use.copy()
-    DD_phase_S_use_awal=DDphase_S_use.copy()
+    DDphase_P_use_awal=DDphase_P_use.copy()
+    DDphase_S_use_awal=DDphase_S_use.copy()
 
     rms_list=[rms1]
     dv_var=[]
@@ -599,15 +599,15 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
         Dp = damping_p * weight_inv
         Ds = damping_s * weight_inv
 
-        vp_kernel_DD=weightDD_i*(vp_kernel_DD_awal@weight_inv)
-        vs_kernel_DD=weightDD_i*(vs_kernel_DD_awal@weight_inv)
+        vp_kernel_DD=weightDD*(vp_kernel_DD_awal@weight_inv)
+        vs_kernel_DD=weightDD*(vs_kernel_DD_awal@weight_inv)
         L = scsp.csr_array(smooth_matrix(node))
         L_smooth = damping_smooth * (L @ weight_inv)
 
         if len(hypo_list)!=0:
             n_h=len(hypo_list)*4
-            hypo_kernel_P_DD=weightDD_i*(hypo_kernel_P_DD_awal)
-            hypo_kernel_S_DD=weightDD_i*(hypo_kernel_S_DD_awal)
+            hypo_kernel_P_DD=weightDD*(hypo_kernel_P_DD_awal)
+            hypo_kernel_S_DD=weightDD*(hypo_kernel_S_DD_awal)
             G_data = scsp.block_array([
         [hypo_kernel_P_awal,    vp_kernel,       None],
         [hypo_kernel_P_DD, vp_kernel_DD,    None],
@@ -950,7 +950,7 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
         t_resDD_P = ttobs_DD_P - ttcal_DD_P
         t_resDD_S = ttobs_DD_S - ttcal_DD_S
 
-        t_res = np.hstack((t_res_P, t_resDD_P*weightDD_i, t_res_S, t_resDD_S*weightDD_i))
+        t_res = np.hstack((t_res_P, t_resDD_P*weightDD, t_res_S, t_resDD_S*weightDD))
         t_res_noweight = np.hstack((t_res_P, t_resDD_P, t_res_S, t_resDD_S))
         rms2 = np.sqrt(np.mean(t_res_noweight ** 2))
 

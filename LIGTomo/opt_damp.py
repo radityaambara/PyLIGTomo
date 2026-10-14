@@ -643,6 +643,7 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         dt_var.append(rms2)
         print('rms in parameter ', iter, ' :', rms2)
         logger.info('rms in parameter '+ str(iter)+ ' :'+ str(rms2))
+        
     #save_var=np.vstack((dt_var,dv_var)).T
     #np.savetxt("var_opt_list",save_var,delimiter=',',fmt='%.4f',header='X,Y,Z,Vp,Vs,Vp/Vs,dws_p,dws_s',comments='')
     damping_list['t_res']=np.array(dt_var)
