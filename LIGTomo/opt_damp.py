@@ -465,14 +465,18 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         inv_matrix_hypo = scsp.vstack([G_data,G_regularization], format="csr")
         t_res_inv = np.concatenate([np.asarray(t_res_awal, dtype=float).ravel(),np.zeros(G_regularization.shape[0])])
 
-        inversion_result = lsmr(inv_matrix_hypo, t_res_inv)
+        col_norm = np.sqrt(np.asarray(inv_matrix_hypo.power(2).sum(axis=0)).ravel())
+        D_inv = scsp.diags(1.0 / col_norm, format="csr")
+        A_norm = (inv_matrix_hypo @ D_inv).tocsr()
+        inversion_result = lsmr(A_norm, t_res_inv)
+        dm_result = inversion_result[0] / col_norm
 
         if len(hypo_list)!=0:
-            ds_P=inversion_result[0][hypo_kernel_P.shape[1]:hypo_kernel_P.shape[1]+vp_kernel.shape[1]]*weight_inv.diagonal()
-            ds_S=inversion_result[0][hypo_kernel_P.shape[1]+vp_kernel.shape[1]:]*weight_inv.diagonal()
+            ds_P=dm_result[hypo_kernel_P.shape[1]:hypo_kernel_P.shape[1]+vp_kernel.shape[1]]*weight_inv.diagonal()
+            ds_S=dm_result[hypo_kernel_P.shape[1]+vp_kernel.shape[1]:]*weight_inv.diagonal()
         else:
-            ds_P = inversion_result[0][:vp_kernel.shape[1]]*weight_inv.diagonal()
-            ds_S = inversion_result[0][vp_kernel.shape[1]:]*weight_inv.diagonal()
+            ds_P = dm_result[:vp_kernel.shape[1]]*weight_inv.diagonal()
+            ds_S = dm_result[vp_kernel.shape[1]:]*weight_inv.diagonal()
         print("CND: "+str(inversion_result[6]))
         print("istop: "+str(inversion_result[1]))
         rnorm_list.append(inversion_result[3])
@@ -512,12 +516,12 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         logger.info('velocity variant in parameter '+ str(iter)+' :'+str(dv_var_i))
         #update_hypo
         if len(hypo_list)!=0:
-            d_hypo = inversion_result[0][:(len(hypo_list) * 4)].reshape(len(hypo_list), 4)
+            d_hypo = dm_result[:(len(hypo_list) * 4)].reshape(len(hypo_list), 4)
             cols = ['to_update', 'easting', 'northing', 'elevation']
             hypo_list[cols] = (hypo_list[cols].to_numpy(dtype=float) + d_hypo)
             hypo_list['to_update_i'] = d_hypo[:, 0]
             source_list_invers=pd.concat([hypo_list, blast_list], ignore_index=True)
-            dis_var_i=np.sqrt(np.mean((inversion_result[0][:(len(hypo_list)*4)])**2))
+            dis_var_i=np.sqrt(np.mean((dm_result[:(len(hypo_list)*4)])**2))
             dis_var.append(dis_var_i)
         else:
             source_list_invers=blast_list

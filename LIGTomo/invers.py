@@ -516,14 +516,18 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
         # print(diag_res)
         # logger.info('diagonal resolution matrix: ' + str(diag_res))
         ## resolution matrix end here
-        inversion_result = lsmr(inv_matrix_hypo, t_res_inv)
+        col_norm = np.sqrt(np.asarray(inv_matrix_hypo.power(2).sum(axis=0)).ravel())
+        D_inv = scsp.diags(1.0 / col_norm, format="csr")
+        A_norm = (inv_matrix_hypo @ D_inv).tocsr()
+        inversion_result = lsmr(A_norm, t_res_inv)
+        dm_result = inversion_result[0] / col_norm
 
         if len(hypo_list)!=0:
-            ds_P=inversion_result[0][hypo_kernel_P.shape[1]:hypo_kernel_P.shape[1]+vp_kernel.shape[1]]*weight_inv.diagonal()
-            ds_S=inversion_result[0][hypo_kernel_P.shape[1]+vp_kernel.shape[1]:]*weight_inv.diagonal()
+            ds_P=dm_result[hypo_kernel_P.shape[1]:hypo_kernel_P.shape[1]+vp_kernel.shape[1]]*weight_inv.diagonal()
+            ds_S=dm_result[hypo_kernel_P.shape[1]+vp_kernel.shape[1]:]*weight_inv.diagonal()
         else:
-            ds_P = inversion_result[0][:vp_kernel.shape[1]]*weight_inv.diagonal()
-            ds_S = inversion_result[0][vp_kernel.shape[1]:]*weight_inv.diagonal()
+            ds_P = dm_result[:vp_kernel.shape[1]]*weight_inv.diagonal()
+            ds_S = dm_result[vp_kernel.shape[1]:]*weight_inv.diagonal()
 
         #acond=inversion_result[6]
         print("CND: "+str(inversion_result[6]))
@@ -553,7 +557,7 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
 
         #update_hypo
         if len(hypo_list)!=0:
-            d_hypo = inversion_result[0][:(len(hypo_list) * 4)].reshape(len(hypo_list), 4)
+            d_hypo = dm_result[:(len(hypo_list) * 4)].reshape(len(hypo_list), 4)
             cols = ['to_update', 'easting', 'northing', 'elevation']
             hypo_list[cols] = (hypo_list[cols].to_numpy(dtype=float) + d_hypo)
             hypo_list['to_update_i'] = d_hypo[:, 0]
