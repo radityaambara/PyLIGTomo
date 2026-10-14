@@ -405,6 +405,12 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
     vp_kernel_awal=vp_kernel.copy()
     vs_kernel_awal=vs_kernel.copy()
     rms1 = np.sqrt(np.mean(t_res_awal ** 2))
+    if len(hypo_list)!=0:
+        hypo_kernel_P_awal=hypo_kernel_P.copy()
+        hypo_kernel_S_awal=hypo_kernel_S.copy()
+
+    phase_listP_use_awal=phase_listP_use.copy()
+    phase_listS_use_awal=phase_listS_use.copy()
 
     rms_list=[]
     rms_list.append(rms1)
@@ -442,8 +448,8 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         if len(hypo_list)!=0:
             n_h=len(hypo_list)*4
             G_data=scsp.block_array([
-            [hypo_kernel_P, vp_kernel, None],
-            [hypo_kernel_S, None, vs_kernel]],format="csr")
+            [hypo_kernel_P_awal, vp_kernel, None],
+            [hypo_kernel_S_awal, None, vs_kernel]],format="csr")
 
             Dh=damping_list.iloc[iter,0]*scsp.eye(n_h,format="csr")
             G_regularization = scsp.block_array([
@@ -532,43 +538,43 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         ttobs_P = []
         phase_listP_use_dum = []
         types_P = []
-        for i in range(len(phase_listP_use)):
+        for i in range(len(phase_listP_use_awal)):
             source = np.array(
-                source_list_invers[source_list_invers['id'] == phase_listP_use.iloc[i, 0]][['easting', 'northing', 'elevation']])
+                source_list_invers[source_list_invers['id'] == phase_listP_use_awal.iloc[i, 0]][['easting', 'northing', 'elevation']])
             receiver = np.array(
-                receiver_list[receiver_list['id'] == phase_listP_use.iloc[i, 1]][['easting', 'northing', 'elevation']])
-            t_update =(source_list_invers[source_list_invers['id'] == phase_listP_use.iloc[i, 0]][['to_update']])
+                receiver_list[receiver_list['id'] == phase_listP_use_awal.iloc[i, 1]][['easting', 'northing', 'elevation']])
+            t_update =(source_list_invers[source_list_invers['id'] == phase_listP_use_awal.iloc[i, 0]][['to_update']])
             if (source.size == 0) or (receiver.size == 0):
                 continue
-            if (float(phase_listP_use.iloc[i,2])) <= 0:
+            if (float(phase_listP_use_awal.iloc[i,2])) <= 0:
                 continue
-            phase_listP_use_dum.append(phase_listP_use.iloc[i, :])
-            ttobs_P.append(float(phase_listP_use.iloc[i,2]) - float(t_update.iloc[0, 0]))
+            phase_listP_use_dum.append(phase_listP_use_awal.iloc[i, :])
+            ttobs_P.append(float(phase_listP_use_awal.iloc[i,2]) - float(t_update.iloc[0, 0]))
             path = np.vstack((source, receiver))
             paths_P.append(path)
-            types_P.append(str((source_list_invers[source_list_invers['id'] == phase_listP_use.iloc[i, 0]]['type']).item()))
-        phase_listP_use = pd.DataFrame(phase_listP_use_dum)
+            types_P.append(str((source_list_invers[source_list_invers['id'] == phase_listP_use_awal.iloc[i, 0]]['type']).item()))
+        phase_listP_use = pd.DataFrame(phase_listP_use_dum).reset_index(drop=True)
 
         paths_S= []
         ttobs_S = []
         phase_listS_use_dum = []
         types_S = []
-        for i in range(len(phase_listS_use)):
+        for i in range(len(phase_listS_use_awal)):
             source = np.array(
-                source_list_invers[source_list_invers['id'] == phase_listS_use.iloc[i, 0]][['easting', 'northing', 'elevation']])
+                source_list_invers[source_list_invers['id'] == phase_listS_use_awal.iloc[i, 0]][['easting', 'northing', 'elevation']])
             receiver = np.array(
-                receiver_list[receiver_list['id'] == phase_listS_use.iloc[i, 1]][['easting', 'northing', 'elevation']])
-            t_update = (source_list_invers[source_list_invers['id'] == phase_listS_use.iloc[i, 0]][['to_update']])
+                receiver_list[receiver_list['id'] == phase_listS_use_awal.iloc[i, 1]][['easting', 'northing', 'elevation']])
+            t_update = (source_list_invers[source_list_invers['id'] == phase_listS_use_awal.iloc[i, 0]][['to_update']])
             if (source.size == 0) or (receiver.size == 0):
                 continue
-            if (float(phase_listS_use.iloc[i,2])) <= 0:
+            if (float(phase_listS_use_awal.iloc[i,2])) <= 0:
                 continue
-            phase_listS_use_dum.append(phase_listS_use.iloc[i, :])
-            ttobs_S.append(float(phase_listS_use.iloc[i,2]) - float(t_update.iloc[0, 0]))
+            phase_listS_use_dum.append(phase_listS_use_awal.iloc[i, :])
+            ttobs_S.append(float(phase_listS_use_awal.iloc[i,2]) - float(t_update.iloc[0, 0]))
             path = np.vstack((source, receiver))
             paths_S.append(path)
-            types_S.append(str((source_list_invers[source_list_invers['id'] == phase_listS_use.iloc[i, 0]]['type']).item()))
-        phase_listS_use = pd.DataFrame(phase_listS_use_dum)
+            types_S.append(str((source_list_invers[source_list_invers['id'] == phase_listS_use_awal.iloc[i, 0]]['type']).item()))
+        phase_listS_use = pd.DataFrame(phase_listS_use_dum).reset_index(drop=True)
 
         node_all = np.vstack((node, node_outer))
         vel_allP = np.hstack((vel_node_P_akhir, modvel_outer.Vp))

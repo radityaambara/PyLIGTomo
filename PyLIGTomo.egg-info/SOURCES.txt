@@ -8,6 +8,7 @@ LIGTomo/invers.py
 LIGTomo/invers_DD.py
 LIGTomo/invers_backup.py
 LIGTomo/opt_damp.py
+LIGTomo/opt_dampDD.py
 PyLIGTomo.egg-info/PKG-INFO
 PyLIGTomo.egg-info/SOURCES.txt
 PyLIGTomo.egg-info/dependency_links.txt
