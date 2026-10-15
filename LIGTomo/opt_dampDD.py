@@ -741,8 +741,9 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
         velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin, if_art)
 
         
-        interpS = RBFInterpolator(node_all, vel_allS, kernel='linear', neighbors=8)
+        
         vel_allS = np.hstack((vel_node_S_akhir, modvel_outer.Vs))
+        interpS = RBFInterpolator(node_all, vel_allS, kernel='linear', neighbors=8)
         gridVs = (np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                            decimals=4).reshape(len(xnode), len(ynode), len(znode))).astype(np.float32)
         velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin, if_art)
