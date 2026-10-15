@@ -667,14 +667,14 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
         vawal_P = copy(vel_node_P)
         dsawal_P = 1 / vawal_P
         dsakhir_P = ds_P + dsawal_P
-        vel_node_P = 1 / dsakhir_P
+        vel_node_P_akhir = 1 / dsakhir_P
 
         #updateVs
         vel_awal_S = copy(vel_node_S)
         vawal_S = copy(vel_node_S)
         dsawal_S = 1 / vawal_S
         dsakhir_S = ds_S + dsawal_S
-        vel_node_S = 1 / dsakhir_S
+        vel_node_S_akhir = 1 / dsakhir_S
 
         dv_P=vel_node_P-vel_awal_P
         dv_S=vel_node_S-vel_awal_S
@@ -734,14 +734,15 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
         phase_listS_use = pd.DataFrame(phase_listS_use_dum).reset_index(drop=True)
 
         node_all = np.vstack((node, node_outer))
-        vel_allP = np.hstack((vel_node_P, modvel_outer.Vp))
+        vel_allP = np.hstack((vel_node_P_akhir, modvel_outer.Vp))
         interpP = RBFInterpolator(node_all, vel_allP, kernel='linear', neighbors=8)
         gridVp = (np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                            decimals=4).reshape(len(xnode), len(ynode), len(znode))).astype(np.float32)
         velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin, if_art)
 
-        vel_allS = np.hstack((vel_node_S, modvel_outer.Vs))
+        
         interpS = RBFInterpolator(node_all, vel_allS, kernel='linear', neighbors=8)
+        vel_allS = np.hstack((vel_node_S_akhir, modvel_outer.Vs))
         gridVs = (np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                            decimals=4).reshape(len(xnode), len(ynode), len(znode))).astype(np.float32)
         velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin, if_art)
