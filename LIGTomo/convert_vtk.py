@@ -20,7 +20,7 @@ def event_tovtk(file,scalling):
                 data={"id": np.array(source.id), 'Z_elev': np.array(source.elevation) * scalling})
 
 
-def vel_tovtk(file,file_init,scalling=1000,dx=250,dy=250,dz=250):
+def vel_tovtk(file,file_init,scalling=1000,dx=250,dy=250,dz=250,unit_x='km',unit_t='s'):
     def create_grid(X_coor, Y_coor, Z_coor,dx,dy,dz):
         X_i, X_f = min(X_coor) - dx, max(X_coor) + dx
         Y_i, Y_f = min(Y_coor) - dy, max(Y_coor) + dy

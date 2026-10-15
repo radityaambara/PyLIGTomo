@@ -37,7 +37,6 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
                 "\n iter1: "+str(iter1)+
                 "\n iter2: "+str(iter2)+
                 "\n tmin: "+str(tmin)+
-                "\n iteration_number: "+str(iteration_number)+
                 "\n up_threshold: "+str(up_threshold)+
                 "\n low_threshold: "+str(low_threshold)+
                 "\n dens_thres: "+str(dens_thres)+
@@ -72,7 +71,6 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
     iter1 = int(iter1)
     iter2 = int(iter2)
     tmin = float(tmin)
-    iteration_number = int(iteration_number)
     up_threshold = float(up_threshold)
     low_threshold = float(low_threshold)
     d_rms=float(d_rms)
