@@ -45,10 +45,6 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
                 "\n r_time_S: "+str(r_time_S)+
                 "\n max_sep: "+str(max_sep)+
                 "\n weightDD: "+str(weightDD)+
-                "\n damping_hypo: "+str(damping_hypo)+
-                "\n damping_p: "+str(damping_p)+
-                "\n damping_s: "+str(damping_s)+
-                "\n damping_smooth: "+str(damping_smooth)+
                 "\n update_grid: "+str(update_grid))
 
     print('running in progress')
