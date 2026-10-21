@@ -690,6 +690,8 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
             hypo_list[cols] = (hypo_list[cols].to_numpy(dtype=float) + d_hypo)
             hypo_list['to_update_i'] = d_hypo[:, 0]
             source_list_invers=pd.concat([hypo_list, blast_list], ignore_index=True)
+            dis_var_i = np.sqrt((np.mean(d_hypo ** 2)))
+            dis_var.append(dis_var_i)
         else:
             source_list_invers=blast_list
         #update phase use (delete outside treshold)
