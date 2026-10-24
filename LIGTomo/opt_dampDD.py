@@ -963,7 +963,7 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
     damping_list['rnorm']=np.array(rnorm_list)
     damping_list['xnorm']=np.array(xnorm_list)
     damping_list['CND']=np.array(CND_list)
-    damping_list.to_csv(folder_name+'/param_opt.csv', index=False)
+    damping_list.to_csv(folder_name+'/param_optDD.csv', index=False)
     #plot figure1
     labels = (damping_list['damp_hypo'].astype(str)+ ','+ damping_list['damp_p'].astype(str)+
               ','+damping_list['damp_s'].astype(str)+ ','+ damping_list['damp_smooth'].astype(str))
