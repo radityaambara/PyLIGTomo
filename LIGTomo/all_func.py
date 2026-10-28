@@ -42,10 +42,28 @@ class VelocityGrid:
         self.tmin=tmin
         self.if_art=if_art
 
+    def _cell_indices(self, x, y, z):
+        """Validate coordinates and return lower indices for interpolation."""
+        indices = []
+        for axis, coordinate, nodes in (
+                ('x', x, self.xnode),
+                ('y', y, self.ynode),
+                ('z', z, self.znode)):
+            coordinate = np.asarray(coordinate)
+            if np.any(~np.isfinite(coordinate)):
+                raise ValueError(f"{axis} coordinates must be finite")
+            if np.any((coordinate < nodes[0]) | (coordinate > nodes[-1])):
+                raise ValueError(
+                    f"{axis} coordinates outside grid bounds "
+                    f"[{nodes[0]}, {nodes[-1]}]")
+            index = np.floor((coordinate - nodes[0]) / self.deltn).astype(np.intp)
+            # The maximum node belongs to the last interpolation cell.
+            index = np.minimum(index, len(nodes) - 2)
+            indices.append(int(index) if index.ndim == 0 else index)
+        return tuple(indices)
+
     def vel(self,x, y, z):
-        ix = int((x - self.xmin) / self.deltn)
-        iy = int((y - self.ymin) / self.deltn)
-        iz = int((z - self.zmin) / self.deltn)
+        ix, iy, iz = self._cell_indices(x, y, z)
         ix1 = ix + 1
         iy1 = iy + 1
         iz1 = iz + 1
@@ -71,9 +89,7 @@ class VelocityGrid:
         return v
 
     def vel_vectorize(self,x,y,z):
-        ix = ((x - self.xmin) / self.deltn).astype(int)
-        iy = ((y - self.ymin) / self.deltn).astype(int)
-        iz = ((z - self.zmin) / self.deltn).astype(int)
+        ix, iy, iz = self._cell_indices(x, y, z)
         ix1 = ix + 1
         iy1 = iy + 1
         iz1 = iz + 1
@@ -99,9 +115,7 @@ class VelocityGrid:
         return v
 
     def veld(self,x, y, z):
-        ix = int((x - self.xmin) / self.deltn)
-        iy = int((y - self.ymin) / self.deltn)
-        iz = int((z - self.zmin) / self.deltn)
+        ix, iy, iz = self._cell_indices(x, y, z)
         ix1 = ix + 1
         iy1 = iy + 1
         iz1 = iz + 1
