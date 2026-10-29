@@ -24,6 +24,23 @@ def run_forward(modvel, modvel_outer, source_list, receiver_list, phase_list, de
     fileHandler.setFormatter(logFileFormatter)
     fileHandler.setLevel(logging.INFO)
     logger.addHandler(fileHandler)
+    # Keep ray-tracing exception details out of the root logger / app.log.
+    ray_error_logger = logging.Logger(__name__ + '.ray_tracing_errors', level=logging.ERROR)
+    ray_error_logger.propagate = False
+    ray_error_handler = logging.FileHandler(
+        filename=os.path.join(folder_name, 'ray_tracing_errors.log'), mode='w'
+    )
+    ray_error_handler.setFormatter(logFileFormatter)
+    ray_error_logger.addHandler(ray_error_handler)
+
+    def log_ray_failure(phase, phase_row, result):
+        message = 'error in path ' + phase + ': ' + ' '.join(phase_row.astype(str))
+        logger.info(message)
+        ray_error_logger.error(
+            '%s\nType: %s\nError: %s\nTraceback:\n%s',
+            message, result['type'], result['error'], result['traceback']
+        )
+
     logging.getLogger().setLevel(logging.DEBUG)
     logger.info("\n delt: "+str(delt)+
                 "\n deltn: "+str(deltn)+
@@ -140,10 +157,7 @@ def run_forward(modvel, modvel_outer, source_list, receiver_list, phase_list, de
         results = executor.map(velgridP.safe_ttime_only,paths_P, chunksize=1)
         for i, result in enumerate(results):
             if isinstance(result, dict) and "error" in result:
-                logger.info('not convergen in path P: ' +' '.join(phase_listP_use.iloc[i, :].astype(str)))
-                logger.info(result['type'])
-                logger.info(result['error'])
-                logger.info(result['traceback'])
+                log_ray_failure('P', phase_listP_use.iloc[i, :], result)
                 continue
             ttcal_i = result[1]
             rnd_noise = random.uniform(-rnd_koef, rnd_koef)
@@ -172,10 +186,7 @@ def run_forward(modvel, modvel_outer, source_list, receiver_list, phase_list, de
         results = executor.map(velgridS.safe_ttime_only,paths_S, chunksize=1)
         for i, result in enumerate(results):
             if isinstance(result, dict) and "error" in result:
-                logger.info('not convergen in path S: ' +' '.join(phase_listS_use.iloc[i, :].astype(str)))
-                logger.info(result['type'])
-                logger.info(result['error'])
-                logger.info(result['traceback'])
+                log_ray_failure('S', phase_listS_use.iloc[i, :], result)
                 continue
             ttcal_i = result[1]
             rnd_noise = random.uniform(-rnd_koef, rnd_koef)

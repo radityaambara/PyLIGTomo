@@ -30,6 +30,23 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
     fileHandler.setFormatter(logFileFormatter)
     fileHandler.setLevel(logging.INFO)
     logger.addHandler(fileHandler)
+    # Keep ray-tracing exception details out of the root logger / app.log.
+    ray_error_logger = logging.Logger(__name__ + '.ray_tracing_errors', level=logging.ERROR)
+    ray_error_logger.propagate = False
+    ray_error_handler = logging.FileHandler(
+        filename=os.path.join(folder_name, 'ray_tracing_errors.log'), mode='w'
+    )
+    ray_error_handler.setFormatter(logFileFormatter)
+    ray_error_logger.addHandler(ray_error_handler)
+
+    def log_ray_failure(phase, phase_row, result):
+        message = 'error in path ' + phase + ': ' + ' '.join(phase_row.astype(str))
+        logger.info(message)
+        ray_error_logger.error(
+            '%s\nType: %s\nError: %s\nTraceback:\n%s',
+            message, result['type'], result['error'], result['traceback']
+        )
+
     logging.getLogger().setLevel(logging.DEBUG)
     logger.info("\n delt: "+str(delt)+
                 "\n deltn: "+str(deltn)+
@@ -220,10 +237,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         results = executor.map(velgridP.safe_forwardtwopoints,paths_P, chunksize=1)
         for i, result in enumerate(results):
             if isinstance(result, dict) and "error" in result:
-                logger.info('not convergen in path P: ' +' '.join(phase_listP_use.iloc[i, :].astype(str)))
-                logger.info(result['type'])
-                logger.info(result['error'])
-                logger.info(result['traceback'])
+                log_ray_failure('P', phase_listP_use.iloc[i, :], result)
                 continue
 
             ttcal_i = result[1]
@@ -277,10 +291,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         results = executor.map(velgridS.safe_forwardtwopoints,paths_S, chunksize=1)
         for i, result in enumerate(results):
             if isinstance(result, dict) and "error" in result:
-                logger.info('not convergen in path S: ' +' '.join(phase_listS_use.iloc[i, :].astype(str)))
-                logger.info(result['type'])
-                logger.info(result['error'])
-                logger.info(result['traceback'])
+                log_ray_failure('S', phase_listS_use.iloc[i, :], result)
                 continue
             ttcal_i = result[1]
             hypoder_i = result[3]
@@ -569,6 +580,8 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
     param_len=len(weightDD)
     param_i=0
     weightDD_i=weightDD[param_i]
+    min_iterations_per_weight = 3
+    iterations_at_weight = 0
     t_res_awal=np.hstack((t_res_P_awal,t_resDD_P_awal*weightDD_i,t_res_S_awal,t_resDD_S_awal*weightDD_i))
     t_res_awal_noweight=np.hstack((t_res_P_awal,t_resDD_P_awal,t_res_S_awal,t_resDD_S_awal))
     rms1 = np.sqrt(np.mean(t_res_awal_noweight ** 2))
@@ -764,10 +777,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
             results=executor.map(velgridP.safe_forwardtwopoints,paths_P,chunksize=1)
             for i, result in enumerate(results):
                 if isinstance(result, dict) and "error" in result:
-                    logger.info('not convergen in path P: ' + ' '.join(phase_listP_use.iloc[i, :].astype(str)))
-                    logger.info(result['type'])
-                    logger.info(result['error'])
-                    logger.info(result['traceback'])
+                    log_ray_failure('P', phase_listP_use.iloc[i, :], result)
                     continue
 
                 ttcal_i = result[1]
@@ -809,10 +819,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
             results = executor.map(velgridS.safe_forwardtwopoints, paths_S, chunksize=1)
             for i, result in enumerate(results):
                 if isinstance(result, dict) and "error" in result:
-                    logger.info('not convergen in path S: ' + ' '.join(phase_listS_use.iloc[i, :].astype(str)))
-                    logger.info(result['type'])
-                    logger.info(result['error'])
-                    logger.info(result['traceback'])
+                    log_ray_failure('S', phase_listS_use.iloc[i, :], result)
                     continue
                 ttcal_i = result[1]
                 hypoder_i = result[3]
@@ -967,17 +974,14 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         print('rms after iteration ', iter, ' :', rms2)
         logger.info('rms after iteration ' + str(iter) + ' : ' + str(rms2))
 
-        if rms2>rms1 and iter>0:
+        iterations_at_weight += 1
+        weight_has_converged = rms2 > rms1 or abs(rms2 - rms1) < d_rms
+        if iterations_at_weight >= min_iterations_per_weight and weight_has_converged:
             param_i+=1
             if param_i==param_len:
                 break
             weightDD_i=weightDD[param_i]
-            t_res = np.hstack((t_res_P, t_resDD_P*weightDD_i, t_res_S, t_resDD_S*weightDD_i))
-        elif abs(rms2-rms1)<d_rms and iter>0:
-            param_i+=1
-            if param_i==param_len:
-                break
-            weightDD_i=weightDD[param_i]
+            iterations_at_weight = 0
             t_res = np.hstack((t_res_P, t_resDD_P*weightDD_i, t_res_S, t_resDD_S*weightDD_i))
         elif iter == iteration_number-1:
             break
