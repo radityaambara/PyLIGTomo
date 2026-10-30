@@ -689,6 +689,8 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         dsawal_P = 1 / vawal_P
         dsakhir_P = ds_P + dsawal_P
         vel_node_P = 1 / dsakhir_P
+        if np.any(vel_node_P < 0):
+            logger.warning("Negative velocity detected in vel_node_P after update.")
 
         #updateVs
         #vel_awal_S = copy(vel_node_S)
@@ -696,6 +698,8 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         dsawal_S = 1 / vawal_S
         dsakhir_S = ds_S + dsawal_S
         vel_node_S = 1 / dsakhir_S
+        if np.any(vel_node_S < 0):
+            logger.warning("Negative velocity detected in vel_node_S after update.")
 
         #update_hypo
         if len(hypo_list)!=0:
