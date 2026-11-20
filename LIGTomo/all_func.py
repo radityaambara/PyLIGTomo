@@ -281,10 +281,11 @@ class VelocityGrid:
     def doublepath(self,path):
         diffs=path[1:]-path[:-1]
         dis=np.linalg.norm(diffs,axis=1)
-        if np.any(dis < 2*self.delt):
+        # Splitting every segment gives 2*N - 1 points, including both endpoints.
+        if len(path) % 2 == 1 and np.any(dis < 2*self.delt):
             return np.copy(path)
         midpoints = path[:-1]+(diffs/2)
-        pathnew=np.empty((path.shape[0]+midpoints.shape[0],path.shape[1]),dtype=path.dtype)
+        pathnew=np.empty((path.shape[0]+midpoints.shape[0],path.shape[1]),dtype=midpoints.dtype)
         pathnew[0::2]=path
         pathnew[1::2]=midpoints
         return pathnew
@@ -304,6 +305,8 @@ class VelocityGrid:
         if self.if_art==True:
             diss = path[0] - path[-1]
             npoints = max(3, int(np.ceil(np.linalg.norm(diss) / (2 * self.delt))) + 1)
+            if npoints % 2 == 0:
+                npoints += 1
             path = self.approximate_ray_tracing(path,npoints)
         pathn = self.doublepath(path)
         tt0 = self.tt(pathn)

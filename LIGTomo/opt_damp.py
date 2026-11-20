@@ -437,9 +437,6 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
 
     #mulai iterasi:
     for iter in range(0, len(damping_list)):
-        source_list_invers = source_list.copy()
-        source_list_invers['to_update'] = 0
-        source_list_invers['to_update_i'] = 0
         print('start iteration:', iter)
         weight = np.sqrt(vor_volumes(node))
         weight[weight == 0] = np.max(weight)
@@ -536,9 +533,10 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         if len(hypo_list)!=0:
             d_hypo = dm_result[:(len(hypo_list) * 4)].reshape(len(hypo_list), 4)
             cols = ['to_update', 'easting', 'northing', 'elevation']
-            hypo_list[cols] = (hypo_list[cols].to_numpy(dtype=float) + d_hypo)
-            hypo_list['to_update_i'] = d_hypo[:, 0]
-            source_list_invers=pd.concat([hypo_list, blast_list], ignore_index=True)
+            hypo_cand = hypo_list.copy()
+            hypo_cand[cols] = hypo_list[cols].to_numpy(dtype=float) + d_hypo
+            hypo_cand['to_update_i'] = d_hypo[:, 0]
+            source_list_invers = pd.concat([hypo_cand, blast_list], ignore_index=True)
             dis_var_i=np.sqrt(np.mean((dm_result[:(len(hypo_list)*4)])**2))
             dis_var.append(dis_var_i)
         else:
