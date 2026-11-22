@@ -4,6 +4,30 @@ import scipy.sparse as scsp
 import traceback
 import pandas as pd
 
+
+def linear_rbf_weights(nodes, grid_points):
+    """Return sparse weights for a linear RBF with 8 neighbors and degree 0."""
+    nodes = np.asarray(nodes, dtype=float)
+    k = min(8, len(nodes))
+    indices = KDTree(nodes).query(grid_points, k=np.arange(1, k + 1))[1]
+    indices.sort(axis=1)
+    weights = np.empty(indices.shape)
+    for start in range(0, len(grid_points), 4096):
+        batch = slice(start, start + 4096)
+        neighbors = nodes[indices[batch]]
+        system = np.ones((len(neighbors), k + 1, k + 1))
+        system[:, :k, :k] = -np.linalg.norm(
+            neighbors[:, :, None] - neighbors[:, None, :], axis=-1
+        )
+        system[:, k, k] = 0
+        rhs = np.ones((len(neighbors), k + 1, 1))
+        rhs[:, :k, 0] = -np.linalg.norm(grid_points[batch, None] - neighbors, axis=-1)
+        weights[batch] = np.linalg.solve(system, rhs)[:, :k, 0]
+    return scsp.csr_array(
+        (weights.ravel(), indices.ravel(), np.arange(len(grid_points) + 1) * k),
+        shape=(len(grid_points), len(nodes)),
+    )
+
 """This is class for velocity grid:
 Here, you can create a velocity grid object and use the ray tracing method 
 to determine the length of the ray path within each grid. 
@@ -25,8 +49,9 @@ class VelocityGrid:
     iter1 & iter2 = iteration number for psudo-bending
     tmin = error minimum for psudo-bending
     """
-    def __init__(self,node,xnode,ynode,znode,gridV,deltn,delt,xfac,iter1,iter2,tmin,if_art):
+    def __init__(self,node,xnode,ynode,znode,gridV,deltn,delt,xfac,iter1,iter2,tmin,if_art,rbf_weights=None):
         self.node=node
+        self.rbf_weights = rbf_weights
         self.xnode=xnode
         self.ynode=ynode
         self.znode=znode
@@ -62,7 +87,12 @@ class VelocityGrid:
             indices.append(int(index) if index.ndim == 0 else index)
         return tuple(indices)
 
-    def vel(self,x, y, z):
+    def trilinear_weights(self, x, y, z):
+        """Return flat grid indices and matching weights, eight per point.
+
+        The indices address gridV.ravel() and the rows of rbf_weights.
+        """
+        x, y, z = np.broadcast_arrays(x, y, z)
         ix, iy, iz = self._cell_indices(x, y, z)
         ix1 = ix + 1
         iy1 = iy + 1
@@ -83,36 +113,22 @@ class VelocityGrid:
         w6 = xf * yf1 * zf
         w7 = xf1 * yf * zf
         w8 = xf * yf * zf
-        v = (w1 * self.gridV[ix, iy, iz]) + (w2 * self.gridV[ix1, iy, iz]) + (w3 * self.gridV[ix, iy1, iz]) + (
-                w4 * self.gridV[ix1, iy1, iz]) + (w5 * self.gridV[ix, iy, iz1]) \
-            + (w6 * self.gridV[ix1, iy, iz1]) + (w7 * self.gridV[ix, iy1, iz1]) + (w8 * self.gridV[ix1, iy1, iz1])
-        return v
+        corners = (
+            (ix, iy, iz), (ix1, iy, iz), (ix, iy1, iz), (ix1, iy1, iz),
+            (ix, iy, iz1), (ix1, iy, iz1), (ix, iy1, iz1), (ix1, iy1, iz1),
+        )
+        indices = np.stack(
+            [np.ravel_multi_index(corner, self.gridV.shape) for corner in corners], axis=-1
+        )
+        weights = np.stack((w1, w2, w3, w4, w5, w6, w7, w8), axis=-1)
+        return indices, weights
 
-    def vel_vectorize(self,x,y,z):
-        ix, iy, iz = self._cell_indices(x, y, z)
-        ix1 = ix + 1
-        iy1 = iy + 1
-        iz1 = iz + 1
+    def vel(self, x, y, z):
+        return self.vel_vectorize(x, y, z)
 
-        xf = (x - self.xnode[ix]) / (self.xnode[ix1] - self.xnode[ix])
-        yf = (y - self.ynode[iy]) / (self.ynode[iy1] - self.ynode[iy])
-        zf = (z - self.znode[iz]) / (self.znode[iz1] - self.znode[iz])
-        xf1 = 1 - xf
-        yf1 = 1 - yf
-        zf1 = 1 - zf
-
-        w1 = xf1 * yf1 * zf1
-        w2 = xf * yf1 * zf1
-        w3 = xf1 * yf * zf1
-        w4 = xf * yf * zf1
-        w5 = xf1 * yf1 * zf
-        w6 = xf * yf1 * zf
-        w7 = xf1 * yf * zf
-        w8 = xf * yf * zf
-        v = (w1 * self.gridV[ix, iy, iz]) + (w2 * self.gridV[ix1, iy, iz]) + (w3 * self.gridV[ix, iy1, iz]) + (
-                w4 * self.gridV[ix1, iy1, iz]) + (w5 * self.gridV[ix, iy, iz1]) \
-            + (w6 * self.gridV[ix1, iy, iz1]) + (w7 * self.gridV[ix, iy1, iz1]) + (w8 * self.gridV[ix1, iy1, iz1])
-        return v
+    def vel_vectorize(self, x, y, z):
+        indices, weights = self.trilinear_weights(x, y, z)
+        return np.sum(self.gridV.ravel()[indices] * weights, axis=-1)
 
     def veld(self,x, y, z):
         ix, iy, iz = self._cell_indices(x, y, z)
@@ -323,6 +339,7 @@ class VelocityGrid:
             pathn1 = self.pertubray(pathn)
             tt1 = self.tt(pathn1)
             if abs(tt0 - tt1) <= self.tmin:
+                tt0 = self.tt(pathn)
                 break
             tt0 = np.copy(tt1)
             pathn = np.copy(pathn1)
@@ -347,6 +364,21 @@ class VelocityGrid:
         path_mirror=path[1:]
         distance_path=np.linalg.norm(path_mirror-path[:-1],axis=1)
         half_distance=distance_path/2
+        if self.rbf_weights is not None:
+            indices, weights = self.trilinear_weights(*path.T)
+            path_weights = np.zeros(len(path))
+            path_weights[:-1] += half_distance
+            path_weights[1:] += half_distance
+            contributions = path_weights[:, None] * weights
+            grid_kernel = scsp.csr_array(
+                (contributions.ravel(), (np.zeros(indices.size, dtype=int), indices.ravel())),
+                shape=(1, self.gridV.size),
+            )
+            grid_kernel.eliminate_zeros()
+            kernel = (grid_kernel @ self.rbf_weights)[:, :len(self.node)].tocsr()
+            kernel.eliminate_zeros()
+            return kernel
+
         mytree = KDTree(self.node)
         ind=mytree.query(path)[1]
         krn = np.zeros(len(self.node))
@@ -428,8 +460,9 @@ class VelocityGrid:
         return pathn, tt
 
     """method to change node if there is a change"""
-    def change_node(self, newnode):
-        self.node=newnode
+    def change_node(self, newnode, newrbf_weights=None):
+        self.rbf_weights = newrbf_weights
+        self.node = newnode
 
     """handling error for forward modeling when using multiprocessing"""
     def safe_crkernel(self,path):

@@ -1,4 +1,5 @@
 from .all_func import VelocityGrid, vor_volumes, smooth_matrix, is_addnode, count_tensor_dens
+from .all_func import linear_rbf_weights
 from copy import copy
 from scipy.sparse.linalg import lsmr
 import scipy.sparse as scsp
@@ -17,10 +18,12 @@ import os
 def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, delt, deltn, xfac, iter1, iter2, tmin,
                iteration_number, up_threshold, low_threshold, dens_thres, d_rms, r_time_P, r_time_S, damping_hypo, 
                damping_p, damping_s, damping_smooth, update_grid,folder_name,if_art=True,update_grid_after=False,nu_cpu=os.cpu_count()-1, *,
-               parameterization="velocity"):
-    """Solve for velocity or slowness changes, with damping in the chosen parameter."""
+               parameterization="velocity", kernel_mode="interpolated"):
+    """Solve for velocity or slowness with an interpolated or nearest-node kernel."""
     if parameterization not in ("slowness", "velocity"):
         raise ValueError("parameterization must be 'slowness' or 'velocity'")
+    if kernel_mode not in ("interpolated", "nearest"):
+        raise ValueError("kernel_mode must be 'interpolated' or 'nearest'")
     #load model parameter
     f_path='./'+folder_name
     if not os.path.exists(f_path):
@@ -53,6 +56,7 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
 
     logging.getLogger().setLevel(logging.DEBUG)
     logger.info("Inversion parameterization: %s", parameterization)
+    logger.info("Inversion kernel mode: %s", kernel_mode)
     logger.info("\n delt: "+str(delt)+
                 "\n deltn: "+str(deltn)+
                 "\n xfac: "+str(xfac)+
@@ -121,14 +125,24 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
     Xinter, Yinter, Zinter = np.meshgrid(xnode, ynode, znode, indexing='ij')
     interpP = RBFInterpolator(node_all,vel_allP,kernel='linear',neighbors=8)
     interpS = RBFInterpolator(node_all,vel_allS,kernel='linear',neighbors=8)
-    gridVp = (np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
+    grid_points = np.column_stack((Xinter.ravel(), Yinter.ravel(), Zinter.ravel()))
+
+    def kernel_weights(model_nodes):
+        if kernel_mode == "interpolated":
+            return linear_rbf_weights(model_nodes, grid_points)
+        return None
+
+    rbf_weights = kernel_weights(node_all)
+    gridVp = (np.round(interpP(grid_points),
                        decimals=4).reshape(len(xnode),len(ynode),len(znode))).astype(np.float32)
-    gridVs = (np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
+    gridVs = (np.round(interpS(grid_points),
                        decimals=4).reshape(len(xnode),len(ynode),len(znode))).astype(np.float32)
 
     #determine velgrid object
-    velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin, if_art)
-    velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin, if_art)
+    velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin, if_art,
+                            rbf_weights=rbf_weights)
+    velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin, if_art,
+                            rbf_weights=rbf_weights)
     vel_node_P=np.array(modvel.Vp)
     vel_node_S=np.array(modvel.Vs)
 
@@ -335,10 +349,13 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
     logger.info('jumlah non-zero node awal S: '+str(len(hit_countPawal[hit_countPawal>0])))
 
     node=node[hit_count>0,:]
+    node_all = np.vstack((node, node_outer))
+    rbf_weights = kernel_weights(node_all)
     vel_node_P=vel_node_P[hit_count>0]
     vel_node_S=vel_node_S[hit_count>0]
-    velgridP.change_node(node)
-    velgridS.change_node(node)
+    velgridP.change_node(node, rbf_weights)
+    velgridS.change_node(node, rbf_weights)
+
 
     vp_kernel=[]
     Ax=[]
@@ -374,10 +391,12 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
             break
 
         node=np.vstack((node,added_node_list))
+        node_all = np.vstack((node, node_outer))
+        rbf_weights = kernel_weights(node_all)
         vel_node_P = np.hstack((vel_node_P.T, added_velP_list))
         vel_node_S = np.hstack((vel_node_S.T, added_velS_list))
-        velgridP.change_node(node)
-        velgridS.change_node(node)
+        velgridP.change_node(node, rbf_weights)
+        velgridS.change_node(node, rbf_weights)
 
         print('calculating kernel node')
         logger.info('calculating kernel node')
@@ -404,10 +423,12 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
     logger.info('start removing node by density tensor')
     dens=count_tensor_dens(Ax,Ay,Az)
     node=node[dens>=dens_thres,:]
+    node_all = np.vstack((node, node_outer))
+    rbf_weights = kernel_weights(node_all)
     vel_node_P=vel_node_P[dens>=dens_thres]
     vel_node_S=vel_node_S[dens>=dens_thres]
-    velgridP.change_node(node)
-    velgridS.change_node(node)
+    velgridP.change_node(node, rbf_weights)
+    velgridS.change_node(node, rbf_weights)
     vp_kernel=[]
     with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
         results = executor.map(velgridP.safe_crkernel,path_list_P,chunksize=1)
@@ -420,10 +441,12 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
     logger.info('start removing node by RHC')
     hit_count = vp_kernel.count_nonzero(axis=0)
     node=node[hit_count>low_threshold,:]
+    node_all = np.vstack((node, node_outer))
+    rbf_weights = kernel_weights(node_all)
     vel_node_P=vel_node_P[hit_count>low_threshold]
     vel_node_S=vel_node_S[hit_count>low_threshold]
-    velgridP.change_node(node)
-    velgridS.change_node(node)
+    velgridP.change_node(node, rbf_weights)
+    velgridS.change_node(node, rbf_weights)
 
     vp_kernel=[]
     with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
@@ -626,17 +649,18 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
         phase_listS_use = pd.DataFrame(phase_listS_use_dum)
 
         node_all = np.vstack((node, node_outer))
+        rbf_weights = kernel_weights(node_all)
         vel_allP = np.hstack((vel_node_P, modvel_outer.Vp))
         interpP = RBFInterpolator(node_all, vel_allP, kernel='linear', neighbors=8)
         gridVp = (np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                            decimals=4).reshape(len(xnode), len(ynode), len(znode))).astype(np.float32)
-        velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin, if_art)
+        velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin, if_art, rbf_weights=rbf_weights)
 
         vel_allS = np.hstack((vel_node_S, modvel_outer.Vs))
         interpS = RBFInterpolator(node_all, vel_allS, kernel='linear', neighbors=8)
         gridVs = (np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                            decimals=4).reshape(len(xnode), len(ynode), len(znode))).astype(np.float32)
-        velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin, if_art)
+        velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin, if_art, rbf_weights=rbf_weights)
 
         print('start forward after iteration: ',iter)
         logger.info('start forward after iteration: ' + str(iter))
@@ -785,10 +809,12 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
                 break
 
             node = np.vstack((node, added_node_list))
+            node_all = np.vstack((node, node_outer))
+            rbf_weights = kernel_weights(node_all)
             vel_node_P = np.hstack((vel_node_P.T, added_velP_list))
             vel_node_S = np.hstack((vel_node_S.T, added_velS_list))
-            velgridP.change_node(node)
-            velgridS.change_node(node)
+            velgridP.change_node(node, rbf_weights)
+            velgridS.change_node(node, rbf_weights)
 
             print('calculating kernel node')
             logger.info('calculating kernel node')
@@ -814,12 +840,25 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
             # start removing node
             print('start removing node by density tensor')
             logger.info('start removing node by density tensor')
+            if step_add == 1:
+                Ax, Ay, Az = [], [], []
+                with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
+                    results = executor.map(velgridP.crkernel_tensor, path_list_P, chunksize=1)
+                    for i, result in enumerate(results):
+                        Ax.append(result[1])
+                        Ay.append(result[2])
+                        Az.append(result[3])
+                Ax = scsp.vstack(Ax).tocsr()
+                Ay = scsp.vstack(Ay).tocsr()
+                Az = scsp.vstack(Az).tocsr()
             dens = count_tensor_dens(Ax, Ay, Az)
             node = node[dens >= dens_thres, :]
+            node_all = np.vstack((node, node_outer))
+            rbf_weights = kernel_weights(node_all)
             vel_node_P = vel_node_P[dens >= dens_thres]
             vel_node_S = vel_node_S[dens >= dens_thres]
-            velgridP.change_node(node)
-            velgridS.change_node(node)
+            velgridP.change_node(node, rbf_weights)
+            velgridS.change_node(node, rbf_weights)
             vp_kernel = []
             with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
                 results = executor.map(velgridP.safe_crkernel, path_list_P, chunksize=1)
@@ -831,10 +870,12 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
             logger.info('start removing node by RHC')
             hit_count = vp_kernel.count_nonzero(axis=0)
             node = node[hit_count > low_threshold, :]
+            node_all = np.vstack((node, node_outer))
+            rbf_weights = kernel_weights(node_all)
             vel_node_P = vel_node_P[hit_count > low_threshold]
             vel_node_S = vel_node_S[hit_count > low_threshold]
-            velgridP.change_node(node)
-            velgridS.change_node(node)
+            velgridP.change_node(node, rbf_weights)
+            velgridS.change_node(node, rbf_weights)
 
             vp_kernel=[]
             with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:

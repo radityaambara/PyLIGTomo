@@ -1,4 +1,5 @@
 from .all_func import VelocityGrid, vor_volumes, smooth_matrix, is_addnode, count_tensor_dens
+from .all_func import linear_rbf_weights
 from copy import copy
 from scipy.sparse.linalg import lsmr
 import scipy.sparse as scsp
@@ -14,7 +15,9 @@ import matplotlib.pyplot as plt
 def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, damping_list, delt, deltn, xfac, iter1, iter2, tmin,
                  up_threshold, low_threshold, dens_thres, r_time_P, r_time_S,
                  update_grid,folder_name,if_art=True, nu_cpu=os.cpu_count()-1, *,
-                 parameterization="velocity"):
+                 parameterization="velocity", kernel_mode="interpolated"):
+    if kernel_mode not in ("interpolated", "nearest"):
+        raise ValueError("kernel_mode must be 'interpolated' or 'nearest'")
     """Solve for velocity or slowness changes, with damping in the chosen parameter."""
     if parameterization not in ("slowness", "velocity"):
         raise ValueError("parameterization must be 'slowness' or 'velocity'")
@@ -49,6 +52,7 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         )
 
     logging.getLogger().setLevel(logging.DEBUG)
+    logger.info("Inversion kernel mode: %s", kernel_mode)
     logger.info("Inversion parameterization: %s", parameterization)
     print('run optimization damping parameter')
     logger.info('run optimization damping parameter')
@@ -100,6 +104,14 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
     ynode = np.arange(ymin, ymax+deltn, deltn)
     znode = np.arange(zmin, zmax+deltn, deltn)
     Xinter, Yinter, Zinter = np.meshgrid(xnode, ynode, znode, indexing='ij')
+    grid_points = np.column_stack((Xinter.ravel(), Yinter.ravel(), Zinter.ravel()))
+
+    def kernel_weights(model_nodes):
+        if kernel_mode == "interpolated":
+            return linear_rbf_weights(model_nodes, grid_points)
+        return None
+
+    rbf_weights = kernel_weights(node_all)
     interpP = RBFInterpolator(node_all,vel_allP,kernel='linear',neighbors=8)
     interpS = RBFInterpolator(node_all,vel_allS,kernel='linear',neighbors=8)
     gridVp = np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
@@ -107,8 +119,8 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
     gridVs = np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                        decimals=4).reshape(len(xnode),len(ynode),len(znode))
     #determine velgrid object
-    velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin, if_art)
-    velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin, if_art)
+    velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin, if_art, rbf_weights=rbf_weights)
+    velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin, if_art, rbf_weights=rbf_weights)
     vel_node_P=np.array(modvel.Vp)
     vel_node_S=np.array(modvel.Vs)
 
@@ -291,8 +303,9 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
     node=node[hit_count>0,:]
     vel_node_P=vel_node_P[hit_count>0]
     vel_node_S=vel_node_S[hit_count>0]
-    velgridP.change_node(node)
-    velgridS.change_node(node)
+    rbf_weights = kernel_weights(np.vstack((node, node_outer)))
+    velgridP.change_node(node, rbf_weights)
+    velgridS.change_node(node, rbf_weights)
 
     vp_kernel=[]
     Ax=[]
@@ -327,8 +340,9 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         node=np.vstack((node,added_node_list))
         vel_node_P = np.hstack((vel_node_P.T, added_velP_list))
         vel_node_S = np.hstack((vel_node_S.T, added_velS_list))
-        velgridP.change_node(node)
-        velgridS.change_node(node)
+        rbf_weights = kernel_weights(np.vstack((node, node_outer)))
+        velgridP.change_node(node, rbf_weights)
+        velgridS.change_node(node, rbf_weights)
 
         print('calculating kernel node')
         logger.info('calculating kernel node')
@@ -357,8 +371,9 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
     node=node[dens>=dens_thres,:]
     vel_node_P=vel_node_P[dens>=dens_thres]
     vel_node_S=vel_node_S[dens>=dens_thres]
-    velgridP.change_node(node)
-    velgridS.change_node(node)
+    rbf_weights = kernel_weights(np.vstack((node, node_outer)))
+    velgridP.change_node(node, rbf_weights)
+    velgridS.change_node(node, rbf_weights)
     vp_kernel=[]
     with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
         results = executor.map(velgridP.safe_crkernel,path_list_P,chunksize=1)
@@ -373,8 +388,9 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
     node=node[hit_count>low_threshold,:]
     vel_node_P=vel_node_P[hit_count>low_threshold]
     vel_node_S=vel_node_S[hit_count>low_threshold]
-    velgridP.change_node(node)
-    velgridS.change_node(node)
+    rbf_weights = kernel_weights(np.vstack((node, node_outer)))
+    velgridP.change_node(node, rbf_weights)
+    velgridS.change_node(node, rbf_weights)
 
     vp_kernel=[]
     successful_rows_P = 0
@@ -594,13 +610,13 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         interpP = RBFInterpolator(node_all, vel_allP, kernel='linear', neighbors=8)
         gridVp = np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                            decimals=4).reshape(len(xnode), len(ynode), len(znode))
-        velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin, if_art)
+        velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin, if_art, rbf_weights=rbf_weights)
 
         vel_allS = np.hstack((vel_node_S_akhir, modvel_outer.Vs))
         interpS = RBFInterpolator(node_all, vel_allS, kernel='linear', neighbors=8)
         gridVs = np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                            decimals=4).reshape(len(xnode), len(ynode), len(znode))
-        velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin, if_art)
+        velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin, if_art, rbf_weights=rbf_weights)
 
         print('start forward after iteration: ',iter)
         logger.info('start forward after iteration: '+str(iter))
