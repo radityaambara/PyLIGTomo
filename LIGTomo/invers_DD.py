@@ -16,7 +16,11 @@ import os
 
 def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, dt_list, delt, deltn, xfac, iter1, iter2, tmin,
                  iteration_number, up_threshold, low_threshold, dens_thres, d_rms, r_time_P, r_time_S, max_sep, weightDD, damping_hypo, damping_p, damping_s, damping_smooth,
-                 update_grid,folder_name,if_art=True,update_grid_after=False,nu_cpu=os.cpu_count()-1):
+                 update_grid,folder_name,if_art=True,update_grid_after=False,nu_cpu=os.cpu_count()-1, *,
+                 parameterization="velocity"):
+    """Solve for velocity or slowness changes, with damping in the chosen parameter."""
+    if parameterization not in ("slowness", "velocity"):
+        raise ValueError("parameterization must be 'slowness' or 'velocity'")
     #load model parameter
     f_path='./'+folder_name
     if not os.path.exists(f_path):
@@ -48,6 +52,7 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         )
 
     logging.getLogger().setLevel(logging.DEBUG)
+    logger.info("Inversion parameterization: %s", parameterization)
     logger.info("\n delt: "+str(delt)+
                 "\n deltn: "+str(deltn)+
                 "\n xfac: "+str(xfac)+
@@ -615,6 +620,13 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
 
         vp_kernel_DD=weightDD_i*(vp_kernel_DD@weight_inv)
         vs_kernel_DD=weightDD_i*(vs_kernel_DD@weight_inv)
+        if parameterization == "velocity":
+            ds_dvp = scsp.diags(-1.0 / np.square(vel_node_P, dtype=float), format="csr")
+            ds_dvs = scsp.diags(-1.0 / np.square(vel_node_S, dtype=float), format="csr")
+            vp_kernel = vp_kernel @ ds_dvp
+            vs_kernel = vs_kernel @ ds_dvs
+            vp_kernel_DD = vp_kernel_DD @ ds_dvp
+            vs_kernel_DD = vs_kernel_DD @ ds_dvs
         L = scsp.csr_array(smooth_matrix(node))
         L_smooth = damping_smooth * (L @ weight_inv)
 
@@ -665,11 +677,11 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
         dm_result = inversion_result[0] / col_norm
 
         if len(hypo_list)!=0:
-            ds_P = dm_result[hypo_kernel_P.shape[1]:hypo_kernel_P.shape[1]+vp_kernel.shape[1]]*weight_inv.diagonal()
-            ds_S = dm_result[hypo_kernel_P.shape[1]+vp_kernel.shape[1]:]*weight_inv.diagonal()
+            delta_P = dm_result[n_h:n_h + vp_kernel.shape[1]] * weight_inv.diagonal()
+            delta_S = dm_result[n_h + vp_kernel.shape[1]:] * weight_inv.diagonal()
         else:
-            ds_P = dm_result[:vp_kernel.shape[1]]*weight_inv.diagonal()
-            ds_S = dm_result[vp_kernel.shape[1]:]*weight_inv.diagonal()
+            delta_P = dm_result[:vp_kernel.shape[1]] * weight_inv.diagonal()
+            delta_S = dm_result[vp_kernel.shape[1]:] * weight_inv.diagonal()
 
         #acond=inversion_result[6]
         print("CND: "+str(inversion_result[6]))
@@ -683,21 +695,15 @@ def run_inversDD(modvel, modvel_outer, source_list, receiver_list, phase_list, d
 
 
 
-        #updateVp
-        #vel_awal_P = copy(vel_node_P)
-        vawal_P = copy(vel_node_P)
-        dsawal_P = 1 / vawal_P
-        dsakhir_P = ds_P + dsawal_P
-        vel_node_P = 1 / dsakhir_P
+        if parameterization == "velocity":
+            vel_node_P = vel_node_P + delta_P
+            vel_node_S = vel_node_S + delta_S
+        else:
+            vel_node_P = 1 / (1 / vel_node_P + delta_P)
+            vel_node_S = 1 / (1 / vel_node_S + delta_S)
+
         if np.any(vel_node_P < 0):
             logger.warning("Negative velocity detected in vel_node_P after update.")
-
-        #updateVs
-        #vel_awal_S = copy(vel_node_S)
-        vawal_S = copy(vel_node_S)
-        dsawal_S = 1 / vawal_S
-        dsakhir_S = ds_S + dsawal_S
-        vel_node_S = 1 / dsakhir_S
         if np.any(vel_node_S < 0):
             logger.warning("Negative velocity detected in vel_node_S after update.")
 

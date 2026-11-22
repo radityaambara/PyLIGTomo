@@ -13,7 +13,11 @@ import os
 import matplotlib.pyplot as plt
 def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, damping_list, delt, deltn, xfac, iter1, iter2, tmin,
                  up_threshold, low_threshold, dens_thres, r_time_P, r_time_S,
-                 update_grid,folder_name,if_art=True, nu_cpu=os.cpu_count()-1):
+                 update_grid,folder_name,if_art=True, nu_cpu=os.cpu_count()-1, *,
+                 parameterization="velocity"):
+    """Solve for velocity or slowness changes, with damping in the chosen parameter."""
+    if parameterization not in ("slowness", "velocity"):
+        raise ValueError("parameterization must be 'slowness' or 'velocity'")
     #load model parameter
     f_path='./'+folder_name
     if not os.path.exists(f_path):
@@ -45,6 +49,7 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         )
 
     logging.getLogger().setLevel(logging.DEBUG)
+    logger.info("Inversion parameterization: %s", parameterization)
     print('run optimization damping parameter')
     logger.info('run optimization damping parameter')
     #modvel.columns = modvel.iloc[0]
@@ -447,6 +452,11 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
             raise ValueError("Kernel and Voronoi node size mismatch")
         vp_kernel=vp_kernel_awal @ weight_inv
         vs_kernel=vs_kernel_awal @ weight_inv
+        if parameterization == "velocity":
+            ds_dvp = scsp.diags(-1.0 / np.square(vel_node_P, dtype=float), format="csr")
+            ds_dvs = scsp.diags(-1.0 / np.square(vel_node_S, dtype=float), format="csr")
+            vp_kernel = vp_kernel @ ds_dvp
+            vs_kernel = vs_kernel @ ds_dvs
         
         L = scsp.csr_array(smooth_matrix(node))
         L_smooth = damping_list.iloc[iter,3] * (L @ weight_inv)
@@ -487,11 +497,11 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         dm_result = inversion_result[0] / col_norm
 
         if len(hypo_list)!=0:
-            ds_P=dm_result[hypo_kernel_P.shape[1]:hypo_kernel_P.shape[1]+vp_kernel.shape[1]]*weight_inv.diagonal()
-            ds_S=dm_result[hypo_kernel_P.shape[1]+vp_kernel.shape[1]:]*weight_inv.diagonal()
+            delta_P = dm_result[n_h:n_h + vp_kernel.shape[1]] * weight_inv.diagonal()
+            delta_S = dm_result[n_h + vp_kernel.shape[1]:] * weight_inv.diagonal()
         else:
-            ds_P = dm_result[:vp_kernel.shape[1]]*weight_inv.diagonal()
-            ds_S = dm_result[vp_kernel.shape[1]:]*weight_inv.diagonal()
+            delta_P = dm_result[:vp_kernel.shape[1]] * weight_inv.diagonal()
+            delta_S = dm_result[vp_kernel.shape[1]:] * weight_inv.diagonal()
         print("CND: "+str(inversion_result[6]))
         print("istop: "+str(inversion_result[1]))
         rnorm_list.append(inversion_result[3])
@@ -503,27 +513,21 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         logger.info('xnorm: ' + str(inversion_result[7]))
         logger.info('no_ite: ' + str(inversion_result[2]))
 
-        ds_var_i = np.sqrt((np.mean(np.hstack((ds_P,ds_S)) ** 2)))
+        if parameterization == "velocity":
+            vel_node_P_akhir = vel_node_P + delta_P
+            vel_node_S_akhir = vel_node_S + delta_S
+            ds_P = 1 / vel_node_P_akhir - 1 / vel_node_P
+            ds_S = 1 / vel_node_S_akhir - 1 / vel_node_S
+        else:
+            ds_P, ds_S = delta_P, delta_S
+            vel_node_P_akhir = 1 / (1 / vel_node_P + ds_P)
+            vel_node_S_akhir = 1 / (1 / vel_node_S + ds_S)
+
+        ds_var_i = np.sqrt(np.mean(np.hstack((ds_P, ds_S)) ** 2))
         ds_var.append(ds_var_i)
 
-        #updateVp
-        vel_awal_P = copy(vel_node_P)
-        vel_node_P_akhir = copy(vel_node_P)
-        vawal_P = copy(vel_node_P)
-        dsawal_P = 1 / vawal_P
-        dsakhir_P = ds_P + dsawal_P
-        vel_node_P_akhir = 1 / dsakhir_P
-
-        #updateVs
-        vel_awal_S = copy(vel_node_S)
-        vel_node_S_akhir = copy(vel_node_S)
-        vawal_S = copy(vel_node_S)
-        dsawal_S = 1 / vawal_S
-        dsakhir_S = ds_S + dsawal_S
-        vel_node_S_akhir = 1 / dsakhir_S
-
-        dv_P=vel_node_P_akhir-vel_awal_P
-        dv_S=vel_node_S_akhir-vel_awal_S
+        dv_P = vel_node_P_akhir - vel_node_P
+        dv_S = vel_node_S_akhir - vel_node_S
         dv_var_i = np.sqrt((np.mean(np.hstack((dv_P,dv_S)) ** 2)))
         dv_var.append(dv_var_i)
 
