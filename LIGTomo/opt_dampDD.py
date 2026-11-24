@@ -1,9 +1,9 @@
 from .all_func import VelocityGrid, vor_volumes, smooth_matrix, is_addnode, count_tensor_dens, update_ttobs_DD
-from .all_func import linear_rbf_weights
+from .all_func import inverse_quadratic_rbf_weights, rbf_options
+from .ray_workers import ray_results
 from copy import copy
 from scipy.sparse.linalg import lsmr
 import scipy.sparse as scsp
-import concurrent.futures
 from scipy.spatial import Delaunay
 from scipy.interpolate import RBFInterpolator
 import pandas as pd
@@ -119,12 +119,14 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
 
     def kernel_weights(model_nodes):
         if kernel_mode == "interpolated":
-            return linear_rbf_weights(model_nodes, grid_points)
+            epsilon = rbf_options(node)["epsilon"]
+            return inverse_quadratic_rbf_weights(model_nodes, grid_points, epsilon)
         return None
 
     rbf_weights = kernel_weights(node_all)
-    interpP = RBFInterpolator(node_all,vel_allP,kernel='linear',neighbors=8)
-    interpS = RBFInterpolator(node_all,vel_allS,kernel='linear',neighbors=8)
+    rbf_settings = rbf_options(node)
+    interpP = RBFInterpolator(node_all, vel_allP, **rbf_settings)
+    interpS = RBFInterpolator(node_all, vel_allS, **rbf_settings)
     gridVp = (np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                        decimals=4).reshape(len(xnode),len(ynode),len(znode))).astype(np.float32)
     gridVs = (np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
@@ -240,8 +242,7 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
     vp_kernel=[]
     hypo_rows, hypo_cols, hypo_data = [], [], []
     successful_row_idx = 0
-    with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-        results = executor.map(velgridP.safe_forwardtwopoints,paths_P, chunksize=1)
+    with ray_results(velgridP, "safe_forwardtwopoints", paths_P, nu_cpu) as results:
         for i, result in enumerate(results):
             if isinstance(result, dict) and "error" in result:
                 log_ray_failure('P', phase_listP_use.iloc[i, :], result)
@@ -294,8 +295,7 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
     vs_kernel=[]
     hypo_rows, hypo_cols, hypo_data = [], [], []
     successful_row_idx = 0
-    with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-        results = executor.map(velgridS.safe_forwardtwopoints,paths_S, chunksize=1)
+    with ray_results(velgridS, "safe_forwardtwopoints", paths_S, nu_cpu) as results:
         for i, result in enumerate(results):
             if isinstance(result, dict) and "error" in result:
                 log_ray_failure('S', phase_listS_use.iloc[i, :], result)
@@ -359,8 +359,7 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
     Ax=[]
     Ay=[]
     Az=[]
-    with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-        results = executor.map(velgridP.safe_crkernel_tensor,path_list_P,chunksize=1)
+    with ray_results(velgridP, "safe_crkernel_tensor", path_list_P, nu_cpu) as results:
         for i, result in enumerate(results):
             vp_kernel.append(result[0])
             Ax.append(result[1])
@@ -401,8 +400,7 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
         Ax=[]
         Ay=[]
         Az=[]
-        with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-            results = executor.map(velgridP.safe_crkernel_tensor, path_list_P, chunksize=1)
+        with ray_results(velgridP, "safe_crkernel_tensor", path_list_P, nu_cpu) as results:
             for i, result in enumerate(results):
                 vp_kernel.append(result[0])
                 Ax.append(result[1])
@@ -426,8 +424,7 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
     velgridP.change_node(node, rbf_weights)
     velgridS.change_node(node, rbf_weights)
     vp_kernel=[]
-    with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-        results = executor.map(velgridP.safe_crkernel,path_list_P,chunksize=1)
+    with ray_results(velgridP, "safe_crkernel", path_list_P, nu_cpu) as results:
         for i, result in enumerate(results):
             vp_kernel.append(result)
     vp_kernel = scsp.vstack(vp_kernel).tocsr()
@@ -444,14 +441,12 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
     velgridS.change_node(node, rbf_weights)
 
     vp_kernel=[]
-    with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-        results = executor.map(velgridP.safe_crkernel,path_list_P,chunksize=1)
+    with ray_results(velgridP, "safe_crkernel", path_list_P, nu_cpu) as results:
         for i, result in enumerate(results):
             vp_kernel.append(result)
     vp_kernel = scsp.vstack(vp_kernel).tocsr()
     vs_kernel = []
-    with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-        results = executor.map(velgridS.safe_crkernel,path_list_S,chunksize=1)
+    with ray_results(velgridS, "safe_crkernel", path_list_S, nu_cpu) as results:
         for i, result in enumerate(results):
             vs_kernel.append(result)
     vs_kernel = scsp.vstack(vs_kernel).tocsr()
@@ -770,7 +765,8 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
 
         node_all = np.vstack((node, node_outer))
         vel_allP = np.hstack((vel_node_P_akhir, modvel_outer.Vp))
-        interpP = RBFInterpolator(node_all, vel_allP, kernel='linear', neighbors=8)
+        rbf_settings = rbf_options(node)
+        interpP = RBFInterpolator(node_all, vel_allP, **rbf_settings)
         gridVp = (np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                            decimals=4).reshape(len(xnode), len(ynode), len(znode))).astype(np.float32)
         velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin, if_art, rbf_weights=rbf_weights)
@@ -778,7 +774,7 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
         
         
         vel_allS = np.hstack((vel_node_S_akhir, modvel_outer.Vs))
-        interpS = RBFInterpolator(node_all, vel_allS, kernel='linear', neighbors=8)
+        interpS = RBFInterpolator(node_all, vel_allS, **rbf_settings)
         gridVs = (np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                            decimals=4).reshape(len(xnode), len(ynode), len(znode))).astype(np.float32)
         velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin, if_art, rbf_weights=rbf_weights)
@@ -796,8 +792,7 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
         vp_kernel=[]
         hypo_rows, hypo_cols, hypo_data = [], [], []
         successful_row_idx = 0
-        with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-            results=executor.map(velgridP.safe_forwardtwopoints,paths_P,chunksize=1)
+        with ray_results(velgridP, "safe_forwardtwopoints", paths_P, nu_cpu) as results:
             for i, result in enumerate(results):
                 if isinstance(result, dict) and "error" in result:
                     log_ray_failure('P', phase_listP_use.iloc[i, :], result)
@@ -838,8 +833,7 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
         vs_kernel=[]
         hypo_rows, hypo_cols, hypo_data = [], [], []
         successful_row_idx = 0
-        with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-            results = executor.map(velgridS.safe_forwardtwopoints, paths_S, chunksize=1)
+        with ray_results(velgridS, "safe_forwardtwopoints", paths_S, nu_cpu) as results:
             for i, result in enumerate(results):
                 if isinstance(result, dict) and "error" in result:
                     log_ray_failure('S', phase_listS_use.iloc[i, :], result)

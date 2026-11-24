@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import  RBFInterpolator
 from scipy.spatial import  Delaunay
+from .all_func import rbf_options
 
 def ray_tovtk(file, scalling):
     ray = np.genfromtxt(file, delimiter=',')
@@ -41,10 +42,12 @@ def vel_tovtk(file,file_init,scalling=1000,dx=250,dy=250,dz=250,unit_x='km',unit
     mod_final.X = mod_final.X * scalling
     mod_final.Y = mod_final.Y * scalling
     mod_final.Z = mod_final.Z * scalling
-    interpolp = RBFInterpolator(list(zip(mod_init.X, mod_init.Y,mod_init.Z)), mod_init.Vp, neighbors=8, kernel='linear')
-    vel_init_p = interpolp(list(zip(mod_final.X, mod_final.Y, mod_final.Z)))
-    interpols = RBFInterpolator(list(zip(mod_init.X, mod_init.Y, mod_init.Z)), mod_init.Vs, neighbors=8, kernel='linear')
-    vel_init_s = interpols(list(zip(mod_final.X, mod_final.Y, mod_final.Z)))
+    init_nodes = mod_init[['X', 'Y', 'Z']].to_numpy()
+    final_nodes = mod_final[['X', 'Y', 'Z']].to_numpy()
+    interpolate_initial = RBFInterpolator(
+        init_nodes, mod_init[['Vp', 'Vs']].to_numpy(), **rbf_options(init_nodes)
+    )
+    vel_init_p, vel_init_s = interpolate_initial(final_nodes).T
 
     vel_pertub_p = (mod_final.Vp - vel_init_p) / vel_init_p * 100
     vel_pertub_s = (mod_final.Vs - vel_init_s) / vel_init_s * 100
@@ -53,22 +56,15 @@ def vel_tovtk(file,file_init,scalling=1000,dx=250,dy=250,dz=250,unit_x='km',unit
     Xgrid, Ygrid, Zgrid, shape= create_grid(mod_final.X, mod_final.Y, mod_final.Z, dx,dy,dz)
     coor_flat = np.hstack((Xgrid.reshape(-1, 1), Ygrid.reshape(-1, 1), Zgrid.reshape(-1, 1)))
 
-    #select point inside coordinate only
-    coor_select = coor_flat[in_hull(coor_flat, np.array(mod_final[['X', 'Y', 'Z']]))]
-    vpi = RBFInterpolator(list(zip(mod_final.X, mod_final.Y, mod_final.Z)), mod_final.Vp, neighbors=8,
-                          kernel='linear')(coor_select)
-    vsi = RBFInterpolator(list(zip(mod_final.X, mod_final.Y, mod_final.Z)), mod_final.Vs, neighbors=8,
-                          kernel='linear')(coor_select)
-    dvpi = RBFInterpolator(list(zip(mod_final.X, mod_final.Y, mod_final.Z)), vel_pertub_p, neighbors=8,
-                          kernel='linear')(coor_select)
-    dvsi = RBFInterpolator(list(zip(mod_final.X, mod_final.Y, mod_final.Z)), vel_pertub_s, neighbors=8,
-                          kernel='linear')(coor_select)
-    psi = RBFInterpolator(list(zip(mod_final.X, mod_final.Y, mod_final.Z)), vpvs, neighbors=8, kernel='linear')(
-        coor_select)
-    hcp = RBFInterpolator(list(zip(mod_final.X, mod_final.Y, mod_final.Z)), mod_final.hcP, neighbors=8,
-                          kernel='linear')(coor_select)
-    hcs = RBFInterpolator(list(zip(mod_final.X, mod_final.Y, mod_final.Z)), mod_final.hcS, neighbors=8,
-                          kernel='linear')(coor_select)
+    field_values = np.column_stack((
+        mod_final.Vp, mod_final.Vs, vel_pertub_p, vel_pertub_s, vpvs, mod_final.hcP, mod_final.hcS
+    ))
+    interpolate_final = RBFInterpolator(final_nodes, field_values, **rbf_options(final_nodes))
+    # PyEVTK requires a contiguous array for each field.
+    grid_values = np.asfortranarray(interpolate_final(coor_flat))
+    inside = in_hull(coor_flat, final_nodes)
+    coor_select = coor_flat[inside]
+    vpi, vsi, dvpi, dvsi, psi, hcp, hcs = np.ascontiguousarray(grid_values[inside].T)
     hcp[np.isnan(hcp)] = 0
     hcs[np.isnan(hcs)] = 0
 
@@ -82,20 +78,7 @@ def vel_tovtk(file,file_init,scalling=1000,dx=250,dy=250,dz=250,unit_x='km',unit
                       "hcS": np.array(mod_final.hcS)})  # "Vp/Vs":vpvs})
 
 
-    vpi = RBFInterpolator(list(zip(mod_final.X, mod_final.Y, mod_final.Z)), mod_final.Vp, neighbors=8,
-                          kernel='linear')(coor_flat)
-    vsi = RBFInterpolator(list(zip(mod_final.X, mod_final.Y, mod_final.Z)), mod_final.Vs, neighbors=8,
-                          kernel='linear')(coor_flat)
-    dvpi = RBFInterpolator(list(zip(mod_final.X, mod_final.Y, mod_final.Z)), vel_pertub_p, neighbors=8,
-                          kernel='linear')(coor_flat)
-    dvsi = RBFInterpolator(list(zip(mod_final.X, mod_final.Y, mod_final.Z)), vel_pertub_s, neighbors=8,
-                          kernel='linear')(coor_flat)
-    psi = RBFInterpolator(list(zip(mod_final.X, mod_final.Y, mod_final.Z)), vpvs, neighbors=8, kernel='linear')(
-        coor_flat)
-    hcp = RBFInterpolator(list(zip(mod_final.X, mod_final.Y, mod_final.Z)), mod_final.hcP, neighbors=8,
-                          kernel='linear')(coor_flat)
-    hcs = RBFInterpolator(list(zip(mod_final.X, mod_final.Y, mod_final.Z)), mod_final.hcS, neighbors=8,
-                          kernel='linear')(coor_flat)
+    vpi, vsi, dvpi, dvsi, psi, hcp, hcs = grid_values.T
     Xi= Xgrid.reshape(shape)
     Yi = Ygrid.reshape(shape)
     Zi = Zgrid.reshape(shape)

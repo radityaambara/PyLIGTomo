@@ -5,8 +5,19 @@ import traceback
 import pandas as pd
 
 
-def linear_rbf_weights(nodes, grid_points):
-    """Return sparse weights for a linear RBF with 8 neighbors and degree 0."""
+def rbf_options(active_nodes):
+    """Use the median nearest-neighbor spacing as the RBF length scale."""
+    if len(active_nodes) < 2:
+        raise ValueError("At least two active nodes are required to compute RBF epsilon")
+    distances, _ = KDTree(active_nodes).query(active_nodes, k=2)
+    spacing = np.median(distances[:, 1])
+    if not np.isfinite(spacing) or spacing <= 0:
+        raise ValueError("Median nearest-neighbor spacing must be finite and positive")
+    return dict(kernel="inverse_quadratic", epsilon=1.0 / spacing, neighbors=8, degree=0)
+
+
+def inverse_quadratic_rbf_weights(nodes, grid_points, epsilon):
+    """Return sparse inverse-quadratic RBF weights with 8 neighbors and degree 0."""
     nodes = np.asarray(nodes, dtype=float)
     k = min(8, len(nodes))
     indices = KDTree(nodes).query(grid_points, k=np.arange(1, k + 1))[1]
@@ -16,12 +27,14 @@ def linear_rbf_weights(nodes, grid_points):
         batch = slice(start, start + 4096)
         neighbors = nodes[indices[batch]]
         system = np.ones((len(neighbors), k + 1, k + 1))
-        system[:, :k, :k] = -np.linalg.norm(
+        r = np.linalg.norm(
             neighbors[:, :, None] - neighbors[:, None, :], axis=-1
         )
+        system[:, :k, :k] = 1.0 / (1.0 + (epsilon * r)**2)
         system[:, k, k] = 0
         rhs = np.ones((len(neighbors), k + 1, 1))
-        rhs[:, :k, 0] = -np.linalg.norm(grid_points[batch, None] - neighbors, axis=-1)
+        r_eval = np.linalg.norm(grid_points[batch, None] - neighbors, axis=-1)
+        rhs[:, :k, 0] = 1.0 / (1.0 + (epsilon * r_eval)**2)
         weights[batch] = np.linalg.solve(system, rhs)[:, :k, 0]
     return scsp.csr_array(
         (weights.ravel(), indices.ravel(), np.arange(len(grid_points) + 1) * k),

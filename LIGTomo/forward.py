@@ -1,5 +1,6 @@
 from .all_func import VelocityGrid, vor_volumes, smooth_matrix, is_addnode
-import concurrent.futures
+from .all_func import rbf_options
+from .ray_workers import ray_results
 from scipy.interpolate import RBFInterpolator
 import pandas as pd
 import numpy as np
@@ -81,8 +82,9 @@ def run_forward(modvel, modvel_outer, source_list, receiver_list, phase_list, de
     ynode = np.arange(ymin, ymax+deltn, deltn)
     znode = np.arange(zmin, zmax+deltn, deltn)
     Xinter, Yinter, Zinter = np.meshgrid(xnode, ynode, znode, indexing='ij')
-    interpP = RBFInterpolator(node_all,vel_allP,kernel='linear',neighbors=8)
-    interpS = RBFInterpolator(node_all,vel_allS,kernel='linear',neighbors=8)
+    rbf_settings = rbf_options(node)
+    interpP = RBFInterpolator(node_all, vel_allP, **rbf_settings)
+    interpS = RBFInterpolator(node_all, vel_allS, **rbf_settings)
     gridVp = np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                        decimals=4).reshape(len(xnode),len(ynode),len(znode))
     gridVs = np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
@@ -153,8 +155,7 @@ def run_forward(modvel, modvel_outer, source_list, receiver_list, phase_list, de
     ttcal_P = []
     path_list_P =[]
     phase_listP_use_dum=[]
-    with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-        results = executor.map(velgridP.safe_ttime_only,paths_P, chunksize=1)
+    with ray_results(velgridP, "safe_ttime_only", paths_P, nu_cpu) as results:
         for i, result in enumerate(results):
             if isinstance(result, dict) and "error" in result:
                 log_ray_failure('P', phase_listP_use.iloc[i, :], result)
@@ -182,8 +183,7 @@ def run_forward(modvel, modvel_outer, source_list, receiver_list, phase_list, de
     ttcal_S = []
     path_list_S =[]
     phase_listS_use_dum = []
-    with concurrent.futures.ProcessPoolExecutor(max_workers=nu_cpu) as executor:
-        results = executor.map(velgridS.safe_ttime_only,paths_S, chunksize=1)
+    with ray_results(velgridS, "safe_ttime_only", paths_S, nu_cpu) as results:
         for i, result in enumerate(results):
             if isinstance(result, dict) and "error" in result:
                 log_ray_failure('S', phase_listS_use.iloc[i, :], result)
