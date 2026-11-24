@@ -5,6 +5,8 @@ import traceback
 import pandas as pd
 
 
+"function for RBF interpolation method, using inverse quadratic kernel with 8 neighbors"
+"select epsilon automatically based on the median nearest-neighbor spacing of the active nodes"
 def rbf_options(active_nodes):
     """Use the median nearest-neighbor spacing as the RBF length scale."""
     if len(active_nodes) < 2:
