@@ -1,7 +1,5 @@
 from scipy.spatial import KDTree,Voronoi,ConvexHull, Delaunay
-from scipy.special import xlogy
 from scipy.interpolate import RBFInterpolator
-from operator import index
 import numpy as np
 import scipy.sparse as scsp
 import traceback
@@ -9,54 +7,37 @@ import pandas as pd
 
 
 
-def rbf_options(rbf_neighbors):
-    try:
-        neighbors = index(rbf_neighbors)
-    except TypeError as exc:
-        raise ValueError("rbf_neighbors must be an integer of at least 4") from exc
-    if neighbors < 4:
-        raise ValueError("rbf_neighbors must be an integer of at least 4")
-    return dict(kernel="thin_plate_spline", neighbors=neighbors, degree=1)
+_RBF_NEIGHBORS = 8
 
 
-def thin_plate_spline(nodes, values, rbf_neighbors):
-    return RBFInterpolator(nodes, values, **rbf_options(rbf_neighbors))
-def _tps_stencil_weights(neighbors, points):
-    k = neighbors.shape[1]
-    lower = neighbors.min(axis=1)
-    upper = neighbors.max(axis=1)
-    shift = (lower + upper) / 2
-    scale = (upper - lower) / 2
-    scale[scale == 0] = 1
-    polynomial = np.ones((len(neighbors), k, 4))
-    polynomial[:, :, 1:] = (neighbors - shift[:, None]) / scale[:, None]
+def linear_rbf(nodes, values):
+    return RBFInterpolator(nodes, values, kernel="linear", neighbors=_RBF_NEIGHBORS, degree=0)
 
-    system = np.zeros((len(neighbors), k + 4, k + 4))
-    r = np.linalg.norm(neighbors[:, :, None] - neighbors[:, None, :], axis=-1)
-    system[:, :k, :k] = xlogy(r**2, r)
-    system[:, :k, k:] = polynomial
-    system[:, k:, :k] = polynomial.transpose(0, 2, 1)
-    rhs = np.ones((len(neighbors), k + 4, 1))
-    r_eval = np.linalg.norm(points[:, None] - neighbors, axis=-1)
-    rhs[:, :k, 0] = xlogy(r_eval**2, r_eval)
-    rhs[:, k + 1:, 0] = (points - shift) / scale
-    return np.linalg.solve(system, rhs)[:, :k, 0]
-def thin_plate_spline_weights(nodes, grid_points, rbf_neighbors):
-    """Return sparse 3D TPS weights with an affine polynomial."""
+
+def linear_rbf_weights(nodes, grid_points):
+    """Return sparse linear RBF weights with a constant polynomial."""
     nodes = np.asarray(nodes, dtype=float)
     grid_points = np.asarray(grid_points, dtype=float)
-    k = min(rbf_options(rbf_neighbors)["neighbors"], len(nodes))
-    if k < 4:
-        raise ValueError("3D thin plate spline requires at least four non-coplanar nodes")
-    indices = KDTree(nodes).query(grid_points, k=k)[1]
+    k = min(_RBF_NEIGHBORS, len(nodes))
+    if k == 0:
+        raise ValueError("RBF interpolation requires at least one node")
+    indices = KDTree(nodes).query(grid_points, k=np.arange(1, k + 1))[1]
     indices.sort(axis=1)
     weights = np.empty(indices.shape)
     for start in range(0, len(grid_points), 4096):
         batch = slice(start, start + 4096)
+        neighbors = nodes[indices[batch]]
+        system = np.ones((len(neighbors), k + 1, k + 1))
+        system[:, :k, :k] = -np.linalg.norm(
+            neighbors[:, :, None] - neighbors[:, None, :], axis=-1
+        )
+        system[:, k, k] = 0
+        rhs = np.ones((len(neighbors), k + 1, 1))
+        rhs[:, :k, 0] = -np.linalg.norm(grid_points[batch, None] - neighbors, axis=-1)
         try:
-            weights[batch] = _tps_stencil_weights(nodes[indices[batch]], grid_points[batch])
+            weights[batch] = np.linalg.solve(system, rhs)[:, :k, 0]
         except np.linalg.LinAlgError as exc:
-            raise ValueError("Singular TPS neighborhood; check for duplicate or coplanar nodes") from exc
+            raise ValueError("Singular linear RBF neighborhood; check for duplicate nodes") from exc
     return scsp.csr_array(
         (weights.ravel(), indices.ravel(), np.arange(len(grid_points) + 1) * k),
         shape=(len(grid_points), len(nodes)),

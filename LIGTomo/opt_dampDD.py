@@ -1,5 +1,5 @@
 from .all_func import VelocityGrid, vor_volumes, smooth_matrix, is_addnode, count_tensor_dens, update_ttobs_DD
-from .all_func import thin_plate_spline_weights, thin_plate_spline
+from .all_func import linear_rbf_weights, linear_rbf
 from .ray_workers import ray_results
 from copy import copy
 from scipy.sparse.linalg import lsmr
@@ -17,7 +17,7 @@ import os
 def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list, dt_list, damping_list, delt, deltn, xfac, iter1, iter2, tmin,
                  up_threshold, low_threshold, dens_thres, d_rms, r_time_P, r_time_S, max_sep, weightDD,
                  update_grid,folder_name,if_art=True,update_grid_after=False,nu_cpu=os.cpu_count()-1, *,
-                 parameterization="velocity", kernel_mode="interpolated", rbf_neighbors=16):
+                 parameterization="velocity", kernel_mode="interpolated"):
     if kernel_mode not in ("interpolated", "nearest"):
         raise ValueError("kernel_mode must be 'interpolated' or 'nearest'")
     """Solve for velocity or slowness changes, with damping in the chosen parameter."""
@@ -54,7 +54,6 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
         )
 
     logging.getLogger().setLevel(logging.DEBUG)
-    logger.info("RBF neighbors: %s", rbf_neighbors)
     logger.info("Inversion kernel mode: %s", kernel_mode)
     logger.info("Inversion parameterization: %s", parameterization)
     logger.info("\n delt: "+str(delt)+
@@ -119,12 +118,12 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
 
     def kernel_weights(model_nodes):
         if kernel_mode == "interpolated":
-            return thin_plate_spline_weights(model_nodes, grid_points, rbf_neighbors)
+            return linear_rbf_weights(model_nodes, grid_points)
         return None
 
     rbf_weights = kernel_weights(node_all)
-    interpP = thin_plate_spline(node_all, vel_allP, rbf_neighbors)
-    interpS = thin_plate_spline(node_all, vel_allS, rbf_neighbors)
+    interpP = linear_rbf(node_all, vel_allP)
+    interpS = linear_rbf(node_all, vel_allS)
     gridVp = (np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                        decimals=4).reshape(len(xnode),len(ynode),len(znode))).astype(np.float32)
     gridVs = (np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
@@ -763,7 +762,7 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
 
         node_all = np.vstack((node, node_outer))
         vel_allP = np.hstack((vel_node_P_akhir, modvel_outer.Vp))
-        interpP = thin_plate_spline(node_all, vel_allP, rbf_neighbors)
+        interpP = linear_rbf(node_all, vel_allP)
         gridVp = (np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                            decimals=4).reshape(len(xnode), len(ynode), len(znode))).astype(np.float32)
         velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin, if_art, rbf_weights=rbf_weights)
@@ -771,7 +770,7 @@ def run_opt_paramDD(modvel, modvel_outer, source_list, receiver_list, phase_list
         
         
         vel_allS = np.hstack((vel_node_S_akhir, modvel_outer.Vs))
-        interpS = thin_plate_spline(node_all, vel_allS, rbf_neighbors)
+        interpS = linear_rbf(node_all, vel_allS)
         gridVs = (np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                            decimals=4).reshape(len(xnode), len(ynode), len(znode))).astype(np.float32)
         velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin, if_art, rbf_weights=rbf_weights)
