@@ -83,10 +83,8 @@ def run_forward(modvel, modvel_outer, source_list, receiver_list, phase_list, de
     Xinter, Yinter, Zinter = np.meshgrid(xnode, ynode, znode, indexing='ij')
     interpP = linear_rbf(node_all, vel_allP)
     interpS = linear_rbf(node_all, vel_allS)
-    gridVp = np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
-                       decimals=4).reshape(len(xnode),len(ynode),len(znode))
-    gridVs = np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
-                       decimals=4).reshape(len(xnode),len(ynode),len(znode))
+    gridVp = interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))).reshape(len(xnode), len(ynode), len(znode))
+    gridVs = interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))).reshape(len(xnode), len(ynode), len(znode))
     #determine velgrid object
     velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin, if_art, rbf_weights=None)
     velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin, if_art, rbf_weights=None)

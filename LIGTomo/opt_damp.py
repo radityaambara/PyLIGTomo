@@ -113,10 +113,8 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
     rbf_weights = kernel_weights(node_all)
     interpP = linear_rbf(node_all, vel_allP)
     interpS = linear_rbf(node_all, vel_allS)
-    gridVp = np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
-                       decimals=4).reshape(len(xnode),len(ynode),len(znode))
-    gridVs = np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
-                       decimals=4).reshape(len(xnode),len(ynode),len(znode))
+    gridVp = interpP(grid_points).reshape(len(xnode), len(ynode), len(znode))
+    gridVs = interpS(grid_points).reshape(len(xnode), len(ynode), len(znode))
     #determine velgrid object
     velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin, if_art, rbf_weights=rbf_weights)
     velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin, if_art, rbf_weights=rbf_weights)
@@ -460,11 +458,11 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
             raise ValueError("Kernel and Voronoi node size mismatch")
         vp_kernel=vp_kernel_awal @ weight_inv
         vs_kernel=vs_kernel_awal @ weight_inv
-        if parameterization == "velocity":
-            ds_dvp = scsp.diags(-1.0 / np.square(vel_node_P, dtype=float), format="csr")
-            ds_dvs = scsp.diags(-1.0 / np.square(vel_node_S, dtype=float), format="csr")
-            vp_kernel = vp_kernel @ ds_dvp
-            vs_kernel = vs_kernel @ ds_dvs
+        if parameterization == "slowness":
+            scale_P = scsp.diags(-np.square(vel_node_P, dtype=float), format="csr")
+            scale_S = scsp.diags(-np.square(vel_node_S, dtype=float), format="csr")
+            vp_kernel = vp_kernel @ scale_P
+            vs_kernel = vs_kernel @ scale_S
         
         L = scsp.csr_array(smooth_matrix(node))
         L_smooth = damping_list.iloc[iter,3] * (L @ weight_inv)
@@ -600,14 +598,12 @@ def run_opt_param(modvel, modvel_outer, source_list, receiver_list, phase_list, 
         node_all = np.vstack((node, node_outer))
         vel_allP = np.hstack((vel_node_P_akhir, modvel_outer.Vp))
         interpP = linear_rbf(node_all, vel_allP)
-        gridVp = np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
-                           decimals=4).reshape(len(xnode), len(ynode), len(znode))
+        gridVp = interpP(grid_points).reshape(len(xnode), len(ynode), len(znode))
         velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin, if_art, rbf_weights=rbf_weights)
 
         vel_allS = np.hstack((vel_node_S_akhir, modvel_outer.Vs))
         interpS = linear_rbf(node_all, vel_allS)
-        gridVs = np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
-                           decimals=4).reshape(len(xnode), len(ynode), len(znode))
+        gridVs = interpS(grid_points).reshape(len(xnode), len(ynode), len(znode))
         velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin, if_art, rbf_weights=rbf_weights)
 
         print('start forward after iteration: ',iter)

@@ -8,12 +8,8 @@ import pandas as pd
 
 
 _RBF_NEIGHBORS = 8
-
-
 def linear_rbf(nodes, values):
     return RBFInterpolator(nodes, values, kernel="linear", neighbors=_RBF_NEIGHBORS, degree=0)
-
-
 def linear_rbf_weights(nodes, grid_points):
     """Return sparse linear RBF weights with a constant polynomial."""
     nodes = np.asarray(nodes, dtype=float)
@@ -298,7 +294,11 @@ class VelocityGrid:
             kL=np.sqrt(np.dot(b-mid,b-mid))
             kC=(Sa+Sb)/2
 
-            R=(-(kC*Vmid+1)/(np.dot(4*kC*n,gV)))+np.sqrt((((kC*Vmid)+1)**2/((np.dot(4*kC*n,gV))**2))+(kL**2/2/kC/Vmid))
+            # Rationalized form avoids cancellation for tiny velocity gradients.
+            scale = 4 * kC * np.dot(n, gV)
+            q = kC * Vmid + 1
+            b_term = kL**2 / (2 * kC * Vmid)
+            R = b_term * scale / (np.sqrt(q**2 + b_term * scale**2) + q)
 #            rcur = Vmid / sqrt(np.dot(n, n))
 #            if rcur ** 2 > 0.25 * (np.dot(b - a, b - a)):
 #                R = rcur - sqrt(rcur ** 2 - 0.25 * (np.dot(b - a, b - a)))
@@ -360,9 +360,8 @@ class VelocityGrid:
             pathn = np.copy(pathn1)
         return pathn, tt0
 
-    """method to count raypath length in each irregular node"""
-    """vectorize mode for faster without loop"""
     def crkernel(self, path):
+        """Return velocity sensitivity using RBF weights or nearest-node assignment."""
         path_mirror=path[1:]
         distance_path=np.linalg.norm(path[:-1]-path_mirror,axis=1)
         if (distance_path > 2*self.delt).any():
@@ -379,12 +378,15 @@ class VelocityGrid:
         path_mirror=path[1:]
         distance_path=np.linalg.norm(path_mirror-path[:-1],axis=1)
         half_distance=distance_path/2
+        indices, weights = self.trilinear_weights(*path.T)
+        v_ray = np.sum(weights * self.gridV.ravel()[indices], axis=-1)
+        path_weights = np.zeros(len(path))
+        path_weights[:-1] += half_distance
+        path_weights[1:] += half_distance
+        # Differentiate 1 / v_ray before distributing contributions to nodes.
+        sensitivity = -path_weights / v_ray**2
         if self.rbf_weights is not None:
-            indices, weights = self.trilinear_weights(*path.T)
-            path_weights = np.zeros(len(path))
-            path_weights[:-1] += half_distance
-            path_weights[1:] += half_distance
-            contributions = path_weights[:, None] * weights
+            contributions = sensitivity[:, None] * weights
             grid_kernel = scsp.csr_array(
                 (contributions.ravel(), (np.zeros(indices.size, dtype=int), indices.ravel())),
                 shape=(1, self.gridV.size),
@@ -394,13 +396,8 @@ class VelocityGrid:
             kernel.eliminate_zeros()
             return kernel
 
-        mytree = KDTree(self.node)
-        ind=mytree.query(path)[1]
-        krn = np.zeros(len(self.node))
-        #Add half the distance to the starting nodes (ind[i])
-        np.add.at(krn, ind[:-1], half_distance)
-        #Add half the distance to the ending nodes (ind[i+1])
-        np.add.at(krn, ind[1:], half_distance)
+        nearest = KDTree(self.node).query(path)[1]
+        krn = np.bincount(nearest, weights=sensitivity, minlength=len(self.node))
         return scsp.csr_array(krn.reshape(1,-1))
 
     """method to count raypath length in each irregular node
