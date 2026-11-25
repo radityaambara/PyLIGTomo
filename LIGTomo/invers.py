@@ -1,11 +1,10 @@
 from .all_func import VelocityGrid, vor_volumes, smooth_matrix, is_addnode, count_tensor_dens
-from .all_func import inverse_quadratic_rbf_weights, rbf_options
+from .all_func import thin_plate_spline_weights, thin_plate_spline
 from .ray_workers import ray_results
 from copy import copy
 from scipy.sparse.linalg import lsmr
 import scipy.sparse as scsp
 from scipy.spatial import Delaunay
-from scipy.interpolate import RBFInterpolator
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -18,7 +17,7 @@ import os
 def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, delt, deltn, xfac, iter1, iter2, tmin,
                iteration_number, up_threshold, low_threshold, dens_thres, d_rms, r_time_P, r_time_S, damping_hypo, 
                damping_p, damping_s, damping_smooth, update_grid,folder_name,if_art=True,update_grid_after=False,nu_cpu=os.cpu_count()-1, *,
-               parameterization="velocity", kernel_mode="interpolated"):
+               parameterization="velocity", kernel_mode="interpolated", rbf_neighbors=16):
     """Solve for velocity or slowness with an interpolated or nearest-node kernel."""
     if parameterization not in ("slowness", "velocity"):
         raise ValueError("parameterization must be 'slowness' or 'velocity'")
@@ -55,6 +54,7 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
         )
 
     logging.getLogger().setLevel(logging.DEBUG)
+    logger.info("RBF neighbors: %s", rbf_neighbors)
     logger.info("Inversion parameterization: %s", parameterization)
     logger.info("Inversion kernel mode: %s", kernel_mode)
     logger.info("\n delt: "+str(delt)+
@@ -123,15 +123,13 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
     ynode = np.arange(ymin, ymax+deltn, deltn)
     znode = np.arange(zmin, zmax+deltn, deltn)
     Xinter, Yinter, Zinter = np.meshgrid(xnode, ynode, znode, indexing='ij')
-    rbf_settings = rbf_options(node)
-    interpP = RBFInterpolator(node_all, vel_allP, **rbf_settings)
-    interpS = RBFInterpolator(node_all, vel_allS, **rbf_settings)
+    interpP = thin_plate_spline(node_all, vel_allP, rbf_neighbors)
+    interpS = thin_plate_spline(node_all, vel_allS, rbf_neighbors)
     grid_points = np.column_stack((Xinter.ravel(), Yinter.ravel(), Zinter.ravel()))
 
     def kernel_weights(model_nodes):
         if kernel_mode == "interpolated":
-            epsilon = rbf_options(node)["epsilon"]
-            return inverse_quadratic_rbf_weights(model_nodes, grid_points, epsilon)
+            return thin_plate_spline_weights(model_nodes, grid_points, rbf_neighbors)
         return None
 
     rbf_weights = kernel_weights(node_all)
@@ -646,14 +644,13 @@ def run_invers(modvel, modvel_outer, source_list, receiver_list, phase_list, del
         node_all = np.vstack((node, node_outer))
         rbf_weights = kernel_weights(node_all)
         vel_allP = np.hstack((vel_node_P, modvel_outer.Vp))
-        rbf_settings = rbf_options(node)
-        interpP = RBFInterpolator(node_all, vel_allP, **rbf_settings)
+        interpP = thin_plate_spline(node_all, vel_allP, rbf_neighbors)
         gridVp = (np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                            decimals=4).reshape(len(xnode), len(ynode), len(znode))).astype(np.float32)
         velgridP = VelocityGrid(node, xnode, ynode, znode, gridVp, deltn, delt, xfac, iter1, iter2, tmin, if_art, rbf_weights=rbf_weights)
 
         vel_allS = np.hstack((vel_node_S, modvel_outer.Vs))
-        interpS = RBFInterpolator(node_all, vel_allS, **rbf_settings)
+        interpS = thin_plate_spline(node_all, vel_allS, rbf_neighbors)
         gridVs = (np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                            decimals=4).reshape(len(xnode), len(ynode), len(znode))).astype(np.float32)
         velgridS = VelocityGrid(node, xnode, ynode, znode, gridVs, deltn, delt, xfac, iter1, iter2, tmin, if_art, rbf_weights=rbf_weights)

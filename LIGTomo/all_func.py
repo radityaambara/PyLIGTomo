@@ -1,43 +1,62 @@
 from scipy.spatial import KDTree,Voronoi,ConvexHull, Delaunay
+from scipy.special import xlogy
+from scipy.interpolate import RBFInterpolator
+from operator import index
 import numpy as np
 import scipy.sparse as scsp
 import traceback
 import pandas as pd
 
 
-"function for RBF interpolation method, using inverse quadratic kernel with 8 neighbors"
-"select epsilon automatically based on the median nearest-neighbor spacing of the active nodes"
-def rbf_options(active_nodes):
-    """Use the median nearest-neighbor spacing as the RBF length scale."""
-    if len(active_nodes) < 2:
-        raise ValueError("At least two active nodes are required to compute RBF epsilon")
-    distances, _ = KDTree(active_nodes).query(active_nodes, k=2)
-    spacing = np.median(distances[:, 1])
-    if not np.isfinite(spacing) or spacing <= 0:
-        raise ValueError("Median nearest-neighbor spacing must be finite and positive")
-    return dict(kernel="inverse_quadratic", epsilon=1.0 / spacing, neighbors=8, degree=0)
+
+def rbf_options(rbf_neighbors):
+    try:
+        neighbors = index(rbf_neighbors)
+    except TypeError as exc:
+        raise ValueError("rbf_neighbors must be an integer of at least 4") from exc
+    if neighbors < 4:
+        raise ValueError("rbf_neighbors must be an integer of at least 4")
+    return dict(kernel="thin_plate_spline", neighbors=neighbors, degree=1)
 
 
-def inverse_quadratic_rbf_weights(nodes, grid_points, epsilon):
-    """Return sparse inverse-quadratic RBF weights with 8 neighbors and degree 0."""
+def thin_plate_spline(nodes, values, rbf_neighbors):
+    return RBFInterpolator(nodes, values, **rbf_options(rbf_neighbors))
+def _tps_stencil_weights(neighbors, points):
+    k = neighbors.shape[1]
+    lower = neighbors.min(axis=1)
+    upper = neighbors.max(axis=1)
+    shift = (lower + upper) / 2
+    scale = (upper - lower) / 2
+    scale[scale == 0] = 1
+    polynomial = np.ones((len(neighbors), k, 4))
+    polynomial[:, :, 1:] = (neighbors - shift[:, None]) / scale[:, None]
+
+    system = np.zeros((len(neighbors), k + 4, k + 4))
+    r = np.linalg.norm(neighbors[:, :, None] - neighbors[:, None, :], axis=-1)
+    system[:, :k, :k] = xlogy(r**2, r)
+    system[:, :k, k:] = polynomial
+    system[:, k:, :k] = polynomial.transpose(0, 2, 1)
+    rhs = np.ones((len(neighbors), k + 4, 1))
+    r_eval = np.linalg.norm(points[:, None] - neighbors, axis=-1)
+    rhs[:, :k, 0] = xlogy(r_eval**2, r_eval)
+    rhs[:, k + 1:, 0] = (points - shift) / scale
+    return np.linalg.solve(system, rhs)[:, :k, 0]
+def thin_plate_spline_weights(nodes, grid_points, rbf_neighbors):
+    """Return sparse 3D TPS weights with an affine polynomial."""
     nodes = np.asarray(nodes, dtype=float)
-    k = min(8, len(nodes))
-    indices = KDTree(nodes).query(grid_points, k=np.arange(1, k + 1))[1]
+    grid_points = np.asarray(grid_points, dtype=float)
+    k = min(rbf_options(rbf_neighbors)["neighbors"], len(nodes))
+    if k < 4:
+        raise ValueError("3D thin plate spline requires at least four non-coplanar nodes")
+    indices = KDTree(nodes).query(grid_points, k=k)[1]
     indices.sort(axis=1)
     weights = np.empty(indices.shape)
     for start in range(0, len(grid_points), 4096):
         batch = slice(start, start + 4096)
-        neighbors = nodes[indices[batch]]
-        system = np.ones((len(neighbors), k + 1, k + 1))
-        r = np.linalg.norm(
-            neighbors[:, :, None] - neighbors[:, None, :], axis=-1
-        )
-        system[:, :k, :k] = 1.0 / (1.0 + (epsilon * r)**2)
-        system[:, k, k] = 0
-        rhs = np.ones((len(neighbors), k + 1, 1))
-        r_eval = np.linalg.norm(grid_points[batch, None] - neighbors, axis=-1)
-        rhs[:, :k, 0] = 1.0 / (1.0 + (epsilon * r_eval)**2)
-        weights[batch] = np.linalg.solve(system, rhs)[:, :k, 0]
+        try:
+            weights[batch] = _tps_stencil_weights(nodes[indices[batch]], grid_points[batch])
+        except np.linalg.LinAlgError as exc:
+            raise ValueError("Singular TPS neighborhood; check for duplicate or coplanar nodes") from exc
     return scsp.csr_array(
         (weights.ravel(), indices.ravel(), np.arange(len(grid_points) + 1) * k),
         shape=(len(grid_points), len(nodes)),

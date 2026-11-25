@@ -1,7 +1,6 @@
 from .all_func import VelocityGrid, vor_volumes, smooth_matrix, is_addnode
-from .all_func import rbf_options
+from .all_func import thin_plate_spline
 from .ray_workers import ray_results
-from scipy.interpolate import RBFInterpolator
 import pandas as pd
 import numpy as np
 from zipfile import ZipFile
@@ -11,7 +10,7 @@ import random
 import scipy.sparse as scsp
 
 def run_forward(modvel, modvel_outer, source_list, receiver_list, phase_list, delt, deltn, xfac, iter1, iter2,
-                tmin, folder_name, rnd_koef=1, if_art=True, nu_cpu=os.cpu_count()-1):
+                tmin, folder_name, rnd_koef=1, if_art=True, nu_cpu=os.cpu_count()-1, *, rbf_neighbors=16):
     f_path='./'+folder_name
     if not os.path.exists(f_path):
         os.makedirs(f_path)
@@ -43,6 +42,7 @@ def run_forward(modvel, modvel_outer, source_list, receiver_list, phase_list, de
         )
 
     logging.getLogger().setLevel(logging.DEBUG)
+    logger.info("RBF neighbors: %s", rbf_neighbors)
     logger.info("\n delt: "+str(delt)+
                 "\n deltn: "+str(deltn)+
                 "\n xfac: "+str(xfac)+
@@ -82,9 +82,8 @@ def run_forward(modvel, modvel_outer, source_list, receiver_list, phase_list, de
     ynode = np.arange(ymin, ymax+deltn, deltn)
     znode = np.arange(zmin, zmax+deltn, deltn)
     Xinter, Yinter, Zinter = np.meshgrid(xnode, ynode, znode, indexing='ij')
-    rbf_settings = rbf_options(node)
-    interpP = RBFInterpolator(node_all, vel_allP, **rbf_settings)
-    interpS = RBFInterpolator(node_all, vel_allS, **rbf_settings)
+    interpP = thin_plate_spline(node_all, vel_allP, rbf_neighbors)
+    interpS = thin_plate_spline(node_all, vel_allS, rbf_neighbors)
     gridVp = np.round(interpP(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),
                        decimals=4).reshape(len(xnode),len(ynode),len(znode))
     gridVs = np.round(interpS(np.column_stack((Xinter.flatten(), Yinter.flatten(), Zinter.flatten()))),

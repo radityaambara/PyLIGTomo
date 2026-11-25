@@ -1,9 +1,8 @@
 from pyevtk.hl import polyLinesToVTK,pointsToVTK,gridToVTK
 import numpy as np
 import pandas as pd
-from scipy.interpolate import  RBFInterpolator
 from scipy.spatial import  Delaunay
-from .all_func import rbf_options
+from .all_func import thin_plate_spline
 
 def ray_tovtk(file, scalling):
     ray = np.genfromtxt(file, delimiter=',')
@@ -21,7 +20,7 @@ def event_tovtk(file,scalling):
                 data={"id": np.array(source.id), 'Z_elev': np.array(source.elevation) * scalling})
 
 
-def vel_tovtk(file,file_init,scalling=1000,dx=250,dy=250,dz=250,unit_x='km',unit_t='s'):
+def vel_tovtk(file,file_init,scalling=1000,dx=250,dy=250,dz=250,unit_x='km',unit_t='s', *, rbf_neighbors=16):
     def create_grid(X_coor, Y_coor, Z_coor,dx,dy,dz):
         X_i, X_f = min(X_coor) - dx, max(X_coor) + dx
         Y_i, Y_f = min(Y_coor) - dy, max(Y_coor) + dy
@@ -44,8 +43,8 @@ def vel_tovtk(file,file_init,scalling=1000,dx=250,dy=250,dz=250,unit_x='km',unit
     mod_final.Z = mod_final.Z * scalling
     init_nodes = mod_init[['X', 'Y', 'Z']].to_numpy()
     final_nodes = mod_final[['X', 'Y', 'Z']].to_numpy()
-    interpolate_initial = RBFInterpolator(
-        init_nodes, mod_init[['Vp', 'Vs']].to_numpy(), **rbf_options(init_nodes)
+    interpolate_initial = thin_plate_spline(
+        init_nodes, mod_init[['Vp', 'Vs']].to_numpy(), rbf_neighbors
     )
     vel_init_p, vel_init_s = interpolate_initial(final_nodes).T
 
@@ -59,7 +58,7 @@ def vel_tovtk(file,file_init,scalling=1000,dx=250,dy=250,dz=250,unit_x='km',unit
     field_values = np.column_stack((
         mod_final.Vp, mod_final.Vs, vel_pertub_p, vel_pertub_s, vpvs, mod_final.hcP, mod_final.hcS
     ))
-    interpolate_final = RBFInterpolator(final_nodes, field_values, **rbf_options(final_nodes))
+    interpolate_final = thin_plate_spline(final_nodes, field_values, rbf_neighbors)
     # PyEVTK requires a contiguous array for each field.
     grid_values = np.asfortranarray(interpolate_final(coor_flat))
     inside = in_hull(coor_flat, final_nodes)
